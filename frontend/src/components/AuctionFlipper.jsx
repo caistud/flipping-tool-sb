@@ -11,10 +11,13 @@ const formatCoins = (num) => {
 export default function AuctionFlipper() {
   const [data, setData] = useState([]);
   const [skycoflData, setSkyCoflData] = useState({});
+  const [lbinData, setLbinData] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [topCount, setTopCount] = useState(50);
   const [sortBy, setSortBy] = useState('newest');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -22,11 +25,15 @@ export default function AuctionFlipper() {
       try {
         const rows = await fetchAuctions();
         
-        // Find snipes: we don't have all AH pages, but we can display the newest items and then check skycofl
-        // For MVP frontend, let's just group by item name and if there's an outlier, it's a snipe.
-        // OR better: display the absolute newest BINs, and let user click 'Check SkyCofl' to verify true value.
+        // Fetch background LBIN data for accurate modern snipe evaluations!
+        try {
+          const lbinRes = await fetch('http://localhost:3000/api/lowestbin');
+          if (lbinRes.ok) {
+            const lbinJson = await lbinRes.json();
+            if (active) setLbinData(lbinJson);
+          }
+        } catch(e) { console.error("Could not fetch Moulberry LBIN"); }
         
-        // Let's sort by start date descending to find freshly listed BINs
         const recent = rows.sort((a, b) => b.start - a.start).slice(0, 500);
 
         if (active) {
@@ -42,7 +49,7 @@ export default function AuctionFlipper() {
     loadData();
     const interval = setInterval(loadData, 15000); // 15s refresh
     return () => { active = false; clearInterval(interval); };
-  }, []);
+  }, [refreshTrigger]);
 
   const handleCheckSkyCofl = async (itemIdClean) => {
     // Basic item name normalization (e.g. "Heroic Hyperion ✪" -> "HYPERION")
@@ -67,14 +74,19 @@ export default function AuctionFlipper() {
   if (loading && data.length === 0) return <div className="loader-container"><div className="loader"></div><p>Scanning Action House bins...</p></div>;
   if (error) return <div className="glass-card text-danger">Error fetching auctions data: {error}</div>;
 
-  const sortedData = [...data].sort((a, b) => {
-    if (sortBy === 'newest') return b.start - a.start;
-    const aPrice = a.starting_bid || a.highest_bid_amount || 0;
-    const bPrice = b.starting_bid || b.highest_bid_amount || 0;
-    if (sortBy === 'price_lowest') return aPrice - bPrice;
-    if (sortBy === 'price_highest') return bPrice - aPrice;
-    return 0;
-  });
+  const sortedData = [...data]
+    .filter(a => {
+      if (searchQuery && !a.item_name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'newest') return b.start - a.start;
+      const aPrice = a.starting_bid || a.highest_bid_amount || 0;
+      const bPrice = b.starting_bid || b.highest_bid_amount || 0;
+      if (sortBy === 'price_lowest') return aPrice - bPrice;
+      if (sortBy === 'price_highest') return bPrice - aPrice;
+      return 0;
+    });
   
   const displayData = sortedData.slice(0, topCount);
 
@@ -110,6 +122,25 @@ export default function AuctionFlipper() {
             style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '0.5rem', borderRadius: '8px', width: '80px', outline: 'none' }}
           />
         </div>
+        <div>
+          <label style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }}>Search:</label>
+          <input 
+            type="text" 
+            placeholder="Item name..."
+            value={searchQuery} 
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '0.5rem', borderRadius: '8px', width: '140px', outline: 'none' }}
+          />
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <button 
+            className="btn" 
+            onClick={() => setRefreshTrigger(prev => prev + 1)}
+            style={{ padding: '0.4rem 0.8rem', background: 'var(--accent-primary)', color: '#000', fontWeight: 'bold' }}
+          >
+            Sync Now
+          </button>
+        </div>
       </div>
       
       <div className="cards-grid">
@@ -120,37 +151,59 @@ export default function AuctionFlipper() {
               <span className="text-muted text-sm" style={{textTransform: 'uppercase'}}>{item.category}</span>
             </div>
             
-            <h3 style={{ fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <h3 style={{ fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               {item.item_name}
+              <a 
+                href={`https://sky.coflnet.com/item/${item.item_name.toUpperCase().replace(/[^A-Z]/g, '_')}`} 
+                target="_blank" 
+                rel="noreferrer"
+                title="View on CoFLink"
+                style={{ color: 'var(--accent-primary)', textDecoration: 'none', fontSize: '0.85rem' }}
+              >
+                ↗
+              </a>
             </h3>
             
             <div className="flex-between" style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span className="text-muted" style={{fontSize: '0.8rem'}}>BIN Price</span>
+                <span className="text-muted" style={{fontSize: '0.8rem'}}>Listed For</span>
                 <span className="text-warning" style={{fontWeight: '700', fontSize: '1.2rem'}}>{formatCoins(item.starting_bid || item.highest_bid_amount)}</span>
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end'}}>
-                <span className="text-muted" style={{fontSize: '0.8rem'}}>SkyCofl Average</span>
+                <span className="text-muted" style={{fontSize: '0.8rem'}}>Live Lowest BIN</span>
+                {lbinData[item.item_name.toUpperCase().replace(/[^A-Z]/g, '_')] ? (
+                  <span className={lbinData[item.item_name.toUpperCase().replace(/[^A-Z]/g, '_')] > (item.starting_bid || 0) ? "text-success" : "text-danger"} style={{fontWeight: '700', fontSize: '1rem'}}>
+                    {formatCoins(lbinData[item.item_name.toUpperCase().replace(/[^A-Z]/g, '_')])}
+                  </span>
+                ) : (
+                  <span className="text-muted" style={{fontStyle: 'italic', fontSize: '0.9rem'}}>Scanning...</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-between" style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed rgba(255,255,255,0.1)'}}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span className="text-muted" style={{fontSize: '0.75rem'}}>Historical Center (SkyCofl)</span>
                 {skycoflData[item.item_name] === undefined ? (
-                  <button onClick={() => handleCheckSkyCofl(item.item_name)} style={{ background: 'var(--accent-primary)', border: 'none', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem'}}>
-                    Verify Value
+                  <button onClick={() => handleCheckSkyCofl(item.item_name)} style={{ background: 'var(--accent-primary)', border: 'none', color: 'white', padding: '0.1rem 0.4rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', marginTop: '0.2rem'}}>
+                    Verify History
                   </button>
                 ) : (
-                  <span className={skycoflData[item.item_name] > item.starting_bid ? "text-success" : "text-danger"} style={{fontWeight: '700'}}>
+                  <span className={skycoflData[item.item_name] > item.starting_bid ? "text-success" : "text-danger"} style={{fontWeight: '700', fontSize: '0.85rem'}}>
                     {skycoflData[item.item_name] === 'Error' ? 'N/A' : formatCoins(skycoflData[item.item_name])}
                   </span>
                 )}
               </div>
             </div>
             
-            {skycoflData[item.item_name] && skycoflData[item.item_name] !== 'Error' && (
+            {(skycoflData[item.item_name] && skycoflData[item.item_name] !== 'Error') || lbinData[item.item_name.toUpperCase().replace(/[^A-Z]/g, '_')] ? (
               <div style={{ fontSize: '0.85rem', textAlign: 'center', marginTop: '0.5rem', background: 'var(--glass-highlight)', padding: '0.5rem', borderRadius: '8px' }}>
-                Profit Margin: <strong className={skycoflData[item.item_name] - item.starting_bid > 0 ? "text-success" : "text-danger"}>
-                  {formatCoins(skycoflData[item.item_name] - item.starting_bid)}
+                Actual Margin vs LBIN: <strong className={lbinData[item.item_name.toUpperCase().replace(/[^A-Z]/g, '_')] - (item.starting_bid || 0) > 0 ? "text-success" : "text-danger"}>
+                  {lbinData[item.item_name.toUpperCase().replace(/[^A-Z]/g, '_')] ? formatCoins(lbinData[item.item_name.toUpperCase().replace(/[^A-Z]/g, '_')] - (item.starting_bid || 0)) : '?'}
                 </strong>
               </div>
-            )}
+            ) : null}
             
           </div>
         ))}

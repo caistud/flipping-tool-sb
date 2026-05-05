@@ -1,151 +1,157 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
 
-const dbPath = path.resolve(__dirname, 'database.sqlite');
-const db = new sqlite3.Database(dbPath);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+const DB_TIMEOUT_MS = 10000;
 
-db.serialize(() => {
-  // Create Bazaar table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS bazaar (
-      productId TEXT PRIMARY KEY,
-      buyPrice REAL,
-      sellPrice REAL,
-      buyVolume INTEGER,
-      sellVolume INTEGER,
-      lastUpdated INTEGER
-    )
-  `);
-
-  // Create Auctions table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS auctions (
-      uuid TEXT PRIMARY KEY,
-      item_name TEXT,
-      tier TEXT,
-      category TEXT,
-      starting_bid REAL,
-      highest_bid_amount REAL,
-      bin BOOLEAN,
-      start INTEGER,
-      end INTEGER,
-      lastUpdated INTEGER
-    )
-  `);
-
-  // Create SkyCofl History table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS skycofl_history (
-      item_id TEXT PRIMARY KEY,
-      average_bin REAL,
-      sales_last_day INTEGER,
-      lastUpdated INTEGER
-    )
-  `);
-});
+const withTimeout = (promise, label) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${DB_TIMEOUT_MS}ms`)), DB_TIMEOUT_MS))
+]);
 
 module.exports = {
-  db,
+  supabase,
   
   // Bazaar queries
-  updateBazaar(products) {
-    const stmt = db.prepare(`
-      INSERT INTO bazaar (productId, buyPrice, sellPrice, buyVolume, sellVolume, lastUpdated)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(productId) DO UPDATE SET
-        buyPrice = excluded.buyPrice,
-        sellPrice = excluded.sellPrice,
-        buyVolume = excluded.buyVolume,
-        sellVolume = excluded.sellVolume,
-        lastUpdated = excluded.lastUpdated
-    `);
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      for (const [productId, data] of Object.entries(products)) {
-        const qs = data.quick_status;
-        stmt.run(
-          productId,
-          qs.buyPrice,
-          qs.sellPrice,
-          qs.buyVolume,
-          qs.sellVolume,
-          Date.now()
-        );
-      }
-      db.run('COMMIT');
+  async updateBazaar(products) {
+    const rows = Object.entries(products).map(([productId, data]) => {
+      const qs = data.quick_status;
+      return {
+        productId,
+        buyPrice: qs.buyPrice,
+        sellPrice: qs.sellPrice,
+        buyVolume: qs.buyVolume,
+        sellVolume: qs.sellVolume,
+        lastUpdated: Date.now()
+      };
     });
-    stmt.finalize();
+    
+    // Payload size is ~650kb for 5000 items, fitting safely inside standard PostgreSQL DSN limits.
+    const { error } = await withTimeout(supabase.from('bazaar').upsert(rows), 'updateBazaar');
+    if (error) console.error("Error updating bazaar:", error);
   },
 
-  getBazaar(callback) {
-    db.all('SELECT * FROM bazaar', (err, rows) => {
-      callback(err, rows);
-    });
+  async getBazaar(callback) {
+    try {
+      let bData = [];
+      let iData = [];
+      let page = 0;
+      
+      while (true) {
+        const { data, error } = await withTimeout(
+          supabase.from('bazaar').select('*').range(page * 1000, (page + 1) * 1000 - 1),
+          'getBazaar bazaar page'
+        );
+        if (error) throw error;
+        bData = bData.concat(data);
+        if (data.length < 1000) break;
+        page++;
+      }
+      
+      page = 0;
+      while (true) {
+        const { data, error } = await withTimeout(
+          supabase.from('items').select('id, npc_sell_price').range(page * 1000, (page + 1) * 1000 - 1),
+          'getBazaar items page'
+        );
+        if (error) throw error;
+        iData = iData.concat(data);
+        if (data.length < 1000) break;
+        page++;
+      }
+      
+      const itemMap = {};
+      iData.forEach(i => itemMap[i.id] = i.npc_sell_price);
+      
+      const rows = bData.map(b => ({
+        ...b,
+        npc_sell_price: itemMap[b.productId] || null
+      }));
+      
+      callback(null, rows);
+    } catch (err) {
+      callback(err, []);
+    }
   },
 
   // Auction queries
-  updateAuctions(auctionsList) {
-    const stmt = db.prepare(`
-      INSERT INTO auctions (uuid, item_name, tier, category, starting_bid, highest_bid_amount, bin, start, end, lastUpdated)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(uuid) DO UPDATE SET
-        highest_bid_amount = excluded.highest_bid_amount,
-        lastUpdated = excluded.lastUpdated
-    `);
+  async updateAuctions(auctionsList) {
+    const rows = auctionsList.filter(auc => auc.bin).map(auc => ({
+      uuid: auc.uuid,
+      item_name: auc.item_name,
+      tier: auc.tier,
+      category: auc.category,
+      starting_bid: auc.starting_bid,
+      highest_bid_amount: auc.highest_bid_amount || auc.starting_bid,
+      bin: auc.bin,
+      start: auc.start,
+      end: auc.end,
+      lastUpdated: Date.now()
+    }));
     
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      for (const auc of auctionsList) {
-        if (!auc.bin) continue; // Only tracking BINs for sniffing MVP
-        stmt.run(
-          auc.uuid,
-          auc.item_name,
-          auc.tier,
-          auc.category,
-          auc.starting_bid,
-          auc.highest_bid_amount || auc.starting_bid,
-          auc.bin ? 1 : 0,
-          auc.start,
-          auc.end,
-          Date.now()
-        );
-      }
-      db.run('COMMIT');
-    });
-    stmt.finalize();
+    // Chunk auctions if there are too many returned by the single page MVP poll
+    if (rows.length === 0) return;
+    const { error } = await withTimeout(supabase.from('auctions').upsert(rows), 'updateAuctions');
+    if (error) console.error("Error updating auctions:", error);
   },
 
-  getAuctions(callback) {
-    // Only return active auctions
-    const now = Date.now();
-    db.all('SELECT * FROM auctions WHERE end > ? ORDER BY starting_bid ASC', [now], (err, rows) => {
-      callback(err, rows);
-    });
+  async getAuctions(callback) {
+    try {
+      const now = Date.now();
+      const { data, error } = await withTimeout(supabase
+        .from('auctions')
+        .select('*')
+        .gt('end', now)
+        .order('starting_bid', { ascending: true })
+        .limit(500), 'getAuctions');
+        
+      if (error) throw error;
+      callback(null, data || []);
+    } catch (err) {
+      callback(err, []);
+    }
   },
 
   // SkyCofl queries
-  updateSkyCoflHistory(historyData) {
-    const stmt = db.prepare(`
-      INSERT INTO skycofl_history (item_id, average_bin, sales_last_day, lastUpdated)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(item_id) DO UPDATE SET
-        average_bin = excluded.average_bin,
-        sales_last_day = excluded.sales_last_day,
-        lastUpdated = excluded.lastUpdated
-    `);
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      for (const item of historyData) {
-        stmt.run(item.id, item.average_bin, item.sales_last_day, Date.now());
-      }
-      db.run('COMMIT');
-    });
-    stmt.finalize();
+  async updateSkyCoflHistory(historyData) {
+    const rows = historyData.map(item => ({
+      item_id: item.id,
+      average_bin: item.average_bin,
+      sales_last_day: item.sales_last_day,
+      lastUpdated: Date.now()
+    }));
+    const { error } = await withTimeout(supabase.from('skycofl_history').upsert(rows), 'updateSkyCoflHistory');
+    if (error) console.error("Error updating skycofl history:", error);
   },
 
-  getSkyCoflHistory(itemId, callback) {
-    db.get('SELECT * FROM skycofl_history WHERE item_id = ?', [itemId], (err, row) => {
-      callback(err, row);
-    });
+  async getSkyCoflHistory(itemId, callback) {
+    try {
+      const { data, error } = await withTimeout(supabase
+        .from('skycofl_history')
+        .select('*')
+        .eq('item_id', itemId)
+        .single(), 'getSkyCoflHistory');
+        
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = 0 rows returned
+      callback(null, data || null);
+    } catch (err) {
+      callback(err, null);
+    }
+  },
+
+  // Items queries
+  async updateItems(itemsList) {
+    const rows = itemsList
+      .filter(item => item.npc_sell_price !== undefined)
+      .map(item => ({
+        id: item.id,
+        npc_sell_price: item.npc_sell_price
+      }));
+      
+    if (rows.length === 0) return;
+    const { error } = await withTimeout(supabase.from('items').upsert(rows), 'updateItems');
+    if (error) console.error("Error updating items:", error);
   }
 };

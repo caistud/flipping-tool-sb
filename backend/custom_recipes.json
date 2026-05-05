@@ -1,0 +1,876 @@
+[
+  {
+    "outputInternalId": "SHARD_JORMUNG",
+    "outputName": "Jormung",
+    "qtyYielded": 2,
+    "family": "NONE",
+    "inputs": [
+      {
+        "id": "SHARD_KRAKEN",
+        "name": "Kraken",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_POWER_DRAGON",
+        "name": "Power Dragon",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_GALAXY_FISH",
+    "outputName": "Galaxy Fish",
+    "qtyYielded": 2,
+    "family": "NONE",
+    "inputs": [
+      {
+        "id": "SHARD_SUN_FISH",
+        "name": "Sun Fish",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_SUN_FISH",
+        "name": "Sun Fish",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_SUN_FISH",
+    "outputName": "Sun Fish",
+    "qtyYielded": 2,
+    "family": "NONE",
+    "inputs": [
+      {
+        "id": "SHARD_FLAMING_SPIDER",
+        "name": "Flaming Spider",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_SHINYFISH",
+        "name": "Shinyfish",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_SPHINX",
+    "outputName": "Sphinx",
+    "qtyYielded": 1,
+    "family": "NONE",
+    "inputs": [
+      {
+        "id": "SHARD_COD",
+        "name": "Cod",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GHOST",
+        "name": "Ghost",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_ETHERDRAKE",
+    "outputName": "Etherdrake",
+    "qtyYielded": 2,
+    "family": "Demon and Dragon Family",
+    "inputs": [
+      {
+        "id": "SHARD_KRAKEN",
+        "name": "Kraken",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_APEX_DRAGON",
+        "name": "Apex Dragon",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_LUNAR_MOTH",
+    "outputName": "Lunar Moth",
+    "qtyYielded": 2,
+    "family": "Bug Family",
+    "inputs": [
+      {
+        "id": "SHARD_INVISIBUG",
+        "name": "Invisibug",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_LADYBUG",
+        "name": "Ladybug",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_LADYBUG",
+    "outputName": "Ladybug",
+    "qtyYielded": 2,
+    "family": "Bug Family",
+    "inputs": [
+      {
+        "id": "SHARD_TERMITE",
+        "name": "Termite",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_INVISIBUG",
+        "name": "Invisibug",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_TERMITE",
+    "outputName": "Termite",
+    "qtyYielded": 2,
+    "family": "Bug Family",
+    "inputs": [
+      {
+        "id": "SHARD_MINER_ZOMBIE",
+        "name": "Miner Zombie",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_INVISIBUG",
+        "name": "Invisibug",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_FUNGLOOM",
+    "outputName": "Fungloom",
+    "qtyYielded": 2,
+    "family": "Cave Dweller Family",
+    "inputs": [
+      {
+        "id": "SHARD_MINER_ZOMBIE",
+        "name": "Miner Zombie",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_XYZ",
+        "name": "XYZ",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_BEACONMITE",
+    "outputName": "Beaconmite",
+    "qtyYielded": 1,
+    "family": "Bug Family",
+    "inputs": [
+      {
+        "id": "SHARD_COD",
+        "name": "Cod",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_SYLVAN",
+        "name": "Sylvan",
+        "qty": 2
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_SYLVAN",
+    "outputName": "Sylvan",
+    "qtyYielded": 2,
+    "family": "Elemental Family",
+    "inputs": [
+      {
+        "id": "SHARD_INVISIBUG",
+        "name": "Invisibug",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GHOST",
+        "name": "Ghost",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_HIDEONDRA",
+    "outputName": "Hideondra",
+    "qtyYielded": 2,
+    "family": "Shulker Family",
+    "inputs": [
+      {
+        "id": "SHARD_HIDEONLEAF",
+        "name": "Hideonleaf",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_BURNINGSOUL",
+        "name": "Burningsoul",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_FIREFLY",
+    "outputName": "Firefly",
+    "qtyYielded": 2,
+    "family": "Bug Family",
+    "inputs": [
+      {
+        "id": "SHARD_PRAYING_MANTIS",
+        "name": "Praying Mantis",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_FLAMING_SPIDER",
+        "name": "Flaming Spider",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_PRAYING_MANTIS",
+    "outputName": "Praying Mantis",
+    "qtyYielded": 2,
+    "family": "Bug Family",
+    "inputs": [
+      {
+        "id": "SHARD_CHILL",
+        "name": "Chill",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_PEST",
+        "name": "Pest",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_BAMBLOOM",
+    "outputName": "Bambloom",
+    "qtyYielded": 2,
+    "family": "Panda Family",
+    "inputs": [
+      {
+        "id": "SHARD_SALMON",
+        "name": "Salmon",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_MOCHIBEAR",
+        "name": "Mochibear",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_GROVE",
+    "outputName": "Grove",
+    "qtyYielded": 2,
+    "family": "Elemental Family",
+    "inputs": [
+      {
+        "id": "SHARD_PHANPYRE",
+        "name": "Phanpyre",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_SALMON",
+        "name": "Salmon",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_TERRA",
+    "outputName": "Terra",
+    "qtyYielded": 2,
+    "family": "Elemental Family",
+    "inputs": [
+      {
+        "id": "SHARD_XYZ",
+        "name": "XYZ",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_TAURUS",
+        "name": "Taurus",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_HIDEONCAVE",
+    "outputName": "Hideoncave",
+    "qtyYielded": 2,
+    "family": "Shulker Family",
+    "inputs": [
+      {
+        "id": "SHARD_HIDEONLEAF",
+        "name": "Hideonleaf",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_MINER_ZOMBIE",
+        "name": "Miner Zombie",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_MOLTHORN",
+    "outputName": "Molthorn",
+    "qtyYielded": 2,
+    "family": "Demon and Dragon Family",
+    "inputs": [
+      {
+        "id": "SHARD_JORMUNG",
+        "name": "Jormung",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_ETHERDRAKE",
+        "name": "Etherdrake",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_POWER_DRAGON",
+    "outputName": "Power Dragon",
+    "qtyYielded": 1,
+    "family": "Dragon Family",
+    "inputs": [
+      {
+        "id": "SHARD_COD",
+        "name": "Cod",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_BURNINGSOUL",
+        "name": "Burningsoul",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_ALLIGATOR",
+    "outputName": "Alligator",
+    "qtyYielded": 2,
+    "family": "Reptile and Croco Family",
+    "inputs": [
+      {
+        "id": "SHARD_GLACITE_WALKER",
+        "name": "Glacite Walker",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_CROCODILE",
+        "name": "Crocodile",
+        "qty": 2
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_KING_MINOS",
+    "outputName": "King Minos",
+    "qtyYielded": 1,
+    "family": "Unknown Family",
+    "inputs": [
+      {
+        "id": "SHARD_VERDANT",
+        "name": "Verdant",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_SPHINX",
+        "name": "Sphinx",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_KING_MINOS",
+    "outputName": "King Minos",
+    "qtyYielded": 1,
+    "family": "Unknown Family",
+    "inputs": [
+      {
+        "id": "SHARD_COD",
+        "name": "Cod",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_SPHINX",
+        "name": "Sphinx",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_SPHINX",
+    "outputName": "Sphinx",
+    "qtyYielded": 1,
+    "family": "Unknown Family",
+    "inputs": [
+      {
+        "id": "SHARD_VERDANT",
+        "name": "Verdant",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GHOST",
+        "name": "Ghost",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_QUARTZFANG",
+    "outputName": "Quartzfang",
+    "qtyYielded": 2,
+    "family": "Cave Dweller Family",
+    "inputs": [
+      {
+        "id": "SHARD_MINER_ZOMBIE",
+        "name": "Miner Zombie",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_TROGLOBYTE",
+        "name": "Troglobyte",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_TROGLOBYTE",
+    "outputName": "Troglobyte",
+    "qtyYielded": 2,
+    "family": "Cave Dweller Family",
+    "inputs": [
+      {
+        "id": "SHARD_CHILL",
+        "name": "Chill",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_MINER_ZOMBIE",
+        "name": "Miner Zombie",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_STALAGMIGHT",
+    "outputName": "Stalagmight",
+    "qtyYielded": 2,
+    "family": "Cave Dweller Family",
+    "inputs": [
+      {
+        "id": "SHARD_MINER_ZOMBIE",
+        "name": "Miner Zombie",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_QUARTZFANG",
+        "name": "Quartzfang",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_MOLTENFISH",
+    "outputName": "Moltenfish",
+    "qtyYielded": 2,
+    "family": "Demon Family",
+    "inputs": [
+      {
+        "id": "SHARD_VERDANT",
+        "name": "Verdant",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_KRAKEN",
+        "name": "Kraken",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_FENLORD",
+    "outputName": "Fenlord",
+    "qtyYielded": 2,
+    "family": "Frog and Amphibian Family",
+    "inputs": [
+      {
+        "id": "SHARD_INVISIBUG",
+        "name": "Invisibug",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_BULLFROG",
+        "name": "Bullfrog",
+        "qty": 2
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_BULLFROG",
+    "outputName": "Bullfrog",
+    "qtyYielded": 2,
+    "family": "Frog and Amphibian Family",
+    "inputs": [
+      {
+        "id": "SHARD_RANA",
+        "name": "Rana",
+        "qty": 2
+      },
+      {
+        "id": "SHARD_INVISIBUG",
+        "name": "Invisibug",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_RANA",
+    "outputName": "Rana",
+    "qtyYielded": 2,
+    "family": "Frog and Amphibian Family",
+    "inputs": [
+      {
+        "id": "SHARD_CHILL",
+        "name": "Chill",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_TADGANG",
+        "name": "Tadgang",
+        "qty": 2
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_BEACONMITE",
+    "outputName": "Beaconmite",
+    "qtyYielded": 1,
+    "family": "Bug Family",
+    "inputs": [
+      {
+        "id": "SHARD_VERDANT",
+        "name": "Verdant",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_SYLVAN",
+        "name": "Sylvan",
+        "qty": 2
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_SUN_FISH",
+    "outputName": "Sun Fish",
+    "qtyYielded": 2,
+    "family": "Unknown Family",
+    "inputs": [
+      {
+        "id": "SHARD_BEZAL",
+        "name": "Bezal",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_SHINYFISH",
+        "name": "Shinyfish",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_BRAMBLE",
+    "outputName": "Bramble",
+    "qtyYielded": 2,
+    "family": "Elemental Family",
+    "inputs": [
+      {
+        "id": "SHARD_PEST",
+        "name": "Pest",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GLACITE_WALKER",
+        "name": "Glacite Walker",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_FIREFLY",
+    "outputName": "Firefly",
+    "qtyYielded": 2,
+    "family": "Bug Family",
+    "inputs": [
+      {
+        "id": "SHARD_BEZAL",
+        "name": "Bezal",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_PRAYING_MANTIS",
+        "name": "Praying Mantis",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_SKELETOR",
+    "outputName": "Skeletor",
+    "qtyYielded": 2,
+    "family": "Unknown Family",
+    "inputs": [
+      {
+        "id": "SHARD_GLACITE_WALKER",
+        "name": "Glacite Walker",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_LAPIS_SKELETON",
+        "name": "Lapis Skeleton",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_LAPIS_SKELETON",
+    "outputName": "Lapis Skeleton",
+    "qtyYielded": 2,
+    "family": "Lapis Family",
+    "inputs": [
+      {
+        "id": "SHARD_LAPIS_ZOMBIE",
+        "name": "Lapis Zombie",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GLACITE_WALKER",
+        "name": "Glacite Walker",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_LAPIS_CREEPER",
+    "outputName": "Lapis Creeper",
+    "qtyYielded": 2,
+    "family": "Unknown Family",
+    "inputs": [
+      {
+        "id": "SHARD_LAPIS_SKELETON",
+        "name": "Lapis Skeleton",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GHOST",
+        "name": "Ghost",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_GOLDFIN",
+    "outputName": "Goldfin",
+    "qtyYielded": 2,
+    "family": "Unknown Family",
+    "inputs": [
+      {
+        "id": "SHARD_VERDANT",
+        "name": "Verdant",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GOLDEN_GHOUL",
+        "name": "Golden Ghoul",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_BOLT",
+    "outputName": "Bolt",
+    "qtyYielded": 2,
+    "family": "Elemental Family",
+    "inputs": [
+      {
+        "id": "SHARD_GLACITE_WALKER",
+        "name": "Glacite Walker",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GHOST",
+        "name": "Ghost",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_TOAD",
+    "outputName": "Toad",
+    "qtyYielded": 2,
+    "family": "Frog and Amphibian Family",
+    "inputs": [
+      {
+        "id": "SHARD_TADGANG",
+        "name": "Tadgang",
+        "qty": 2
+      },
+      {
+        "id": "SHARD_INVISIBUG",
+        "name": "Invisibug",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_TIDE",
+    "outputName": "Tide",
+    "qtyYielded": 2,
+    "family": "Elemental Family",
+    "inputs": [
+      {
+        "id": "SHARD_SALMON",
+        "name": "Salmon",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GLACITE_WALKER",
+        "name": "Glacite Walker",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_BLIZZARD",
+    "outputName": "Blizzard",
+    "qtyYielded": 2,
+    "family": "Elemental Family",
+    "inputs": [
+      {
+        "id": "SHARD_AERO",
+        "name": "Aero",
+        "qty": 2
+      },
+      {
+        "id": "SHARD_SPIKE",
+        "name": "Spike",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_AERO",
+    "outputName": "Aero",
+    "qtyYielded": 2,
+    "family": "Elemental Family",
+    "inputs": [
+      {
+        "id": "SHARD_GHOST",
+        "name": "Ghost",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_SPIKE",
+        "name": "Spike",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_ANANKE",
+    "outputName": "Ananke",
+    "qtyYielded": 2,
+    "family": "Demon and Bird Family",
+    "inputs": [
+      {
+        "id": "SHARD_SEAGULL",
+        "name": "Seagull",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_KRAKEN",
+        "name": "Kraken",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  },
+  {
+    "outputInternalId": "SHARD_HIDEONSACK",
+    "outputName": "Hideonsack",
+    "qtyYielded": 2,
+    "family": "Shulker Family",
+    "inputs": [
+      {
+        "id": "SHARD_HIDEONDRA",
+        "name": "Hideondra",
+        "qty": 5
+      },
+      {
+        "id": "SHARD_GHOST",
+        "name": "Ghost",
+        "qty": 5
+      }
+    ],
+    "fee": 0
+  }
+]

@@ -198,3 +198,9 @@ tr:last-child td {
 .badge-epic { background: rgba(160, 32, 240, 0.15); color: #AA00AA; border: 1px solid rgba(170, 0, 170, 0.3); }
 .badge-rare { background: rgba(0, 85, 255, 0.15); color: #5555FF; border: 1px solid rgba(85, 85, 255, 0.3); }
 .badge-uncommon { background: rgba(85, 255, 85, 0.15); color: #55FF55; border: 1px solid rgba(85, 255, 85, 0.3); }
+
+/* Select Dropdown Fix for Native OS Rendering */
+select option {
+  background-color: #1a1a24 !important;
+  color: #ffffff !important;
+}
