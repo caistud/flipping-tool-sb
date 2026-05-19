@@ -12,6 +12,8 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
   margin-bottom: 2rem;
   padding-bottom: 2rem;
   border-bottom: 1px solid var(--glass-border);
@@ -52,6 +54,7 @@ header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-wrap: wrap;
   background: var(--glass-bg);
   padding: 0.65rem 0.8rem;
   border-radius: 12px;
@@ -67,6 +70,7 @@ header {
 
 .feature-select {
   min-width: 230px;
+  max-width: 100%;
   background: rgba(255,255,255,0.06);
   border: 1px solid var(--glass-border);
   color: var(--text-primary);
@@ -77,6 +81,25 @@ header {
   border-radius: 8px;
   cursor: pointer;
   outline: none;
+}
+
+@media (max-width: 720px) {
+  .app-container {
+    padding: 1rem;
+  }
+
+  header {
+    align-items: stretch;
+  }
+
+  .feature-select-wrap {
+    width: 100%;
+  }
+
+  .feature-select {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 .feature-select:focus {
