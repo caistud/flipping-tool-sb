@@ -28,6 +28,26 @@ export const fetchAccessoryFlips = async (params = {}) => {
   return res.json();
 };
 
+export const fetchMagicPower = async (params = {}) => {
+  const query = new URLSearchParams(params);
+  const res = await fetch(`${API_URL}/magic-power?${query.toString()}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.details || body.error || 'Fetch failed');
+  }
+  return res.json();
+};
+
+export const fetchPlayerAccessories = async (params = {}) => {
+  const query = new URLSearchParams(params);
+  const res = await fetch(`${API_URL}/player-accessories?${query.toString()}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.details || body.error || 'Fetch failed');
+  }
+  return res.json();
+};
+
 export const fetchForgeFlips = async (params = {}) => {
   const query = new URLSearchParams(params);
   const res = await fetch(`${API_URL}/forge-flips?${query.toString()}`);

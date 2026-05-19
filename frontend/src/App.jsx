@@ -11,12 +11,14 @@ import HuntingGuide from './components/HuntingGuide'
 import InvestmentStrategies from './components/InvestmentStrategies'
 import HuntFuseStrat from './components/HuntFuseStrat'
 import ForgeFlipper from './components/ForgeFlipper'
+import MagicPowerOptimizer from './components/MagicPowerOptimizer'
 import { API_URL } from './services/api'
 
 const features = [
   { key: 'bazaar', label: 'Bazaar Flipping' },
   { key: 'auctions', label: 'AH Sniping' },
   { key: 'accessories', label: 'Accessory Craft Flips' },
+  { key: 'magicPower', label: 'Magic Power Optimizer' },
   { key: 'forge', label: 'Forge Profit Flips' },
   { key: 'shards', label: 'Shard Fusions' },
   { key: 'hunting', label: 'Hunting Guide' },
@@ -84,6 +86,7 @@ function App() {
       case 'bazaar': return <BazaarFlipper />
       case 'auctions': return <AuctionFlipper />
       case 'accessories': return <AccessoryFlipper />
+      case 'magicPower': return <MagicPowerOptimizer />
       case 'forge': return <ForgeFlipper />
       case 'shards': return <ShardFusionFlipper />
       case 'hunting': return <HuntingGuide />

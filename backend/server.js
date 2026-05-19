@@ -3,6 +3,8 @@ const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
+const nbt = require('prismarine-nbt');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const app = express();
@@ -2466,8 +2468,20 @@ app.get('/api/craft-tree/:itemId', async (req, res) => {
 let moulberryCache = {};
 let moulberryLastFetch = 0;
 let accessoryRecipeCache = { time: 0, recipes: [], sourceCount: 0 };
+let accessoryCatalogCache = { time: 0, items: [], sourceCount: 0 };
 let forgeRecipeCache = { time: 0, recipes: [], sourceCount: 0 };
 const accessoryOutputPriceCache = new Map();
+
+const MAGIC_POWER_BY_RARITY = {
+  COMMON: 3,
+  UNCOMMON: 5,
+  RARE: 8,
+  EPIC: 12,
+  LEGENDARY: 16,
+  MYTHIC: 22,
+  SPECIAL: 3,
+  VERY_SPECIAL: 5,
+};
 
 app.get('/api/lowestbin', async (req, res) => {
   if (Date.now() - moulberryLastFetch > 60000 || Object.keys(moulberryCache).length === 0) {
@@ -2495,6 +2509,22 @@ function cleanNeuName(name) {
     .replace(/\[[^\]]+\]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function neuItemRarity(item) {
+  const direct = String(item?.rarity || item?.tier || '').toUpperCase().replace(/\s+/g, '_');
+  if (MAGIC_POWER_BY_RARITY[direct]) return direct;
+
+  const stripCodes = (value) => cleanNeuName(String(value || '').replace(/§./g, ''));
+  const text = [
+    item?.displayname,
+    item?.display_name,
+    item?.name,
+    ...(Array.isArray(item?.lore) ? item.lore : []),
+  ].map(stripCodes).join(' ').toUpperCase();
+
+  const match = text.match(/\b(VERY SPECIAL|SPECIAL|MYTHIC|LEGENDARY|EPIC|RARE|UNCOMMON|COMMON)\s+(ACCESSORY|HATCCESSORY|NECKLACE|CLOAK|BELT|BRACELET|GLOVES)\b/);
+  return match ? match[1].replace(/\s+/g, '_') : '';
 }
 
 function isAccessoryLikeItem(item, fileBase) {
@@ -2595,7 +2625,7 @@ async function loadAccessoryRecipes() {
     return {
       id: internalId,
       name: cleanNeuName(item.displayname || item.display_name || internalId.replace(/_/g, ' ')),
-      rarity: String(item.rarity || item.tier || '').toUpperCase(),
+      rarity: neuItemRarity(item),
       ingredients,
     };
   });
@@ -2604,6 +2634,201 @@ async function loadAccessoryRecipes() {
   accessoryRecipeCache = { time: Date.now(), recipes, sourceCount: candidatePaths.length };
   return accessoryRecipeCache;
 }
+
+async function loadAccessoryCatalog() {
+  const fresh = accessoryCatalogCache.items.length > 0 && Date.now() - accessoryCatalogCache.time < ACCESSORY_RECIPE_CACHE_MS;
+  if (fresh) return accessoryCatalogCache;
+
+  const treeData = await fetchJsonOrNull(NEU_REPO_TREE_URL);
+  const tree = Array.isArray(treeData?.tree) ? treeData.tree : [];
+  const candidatePaths = tree
+    .filter((entry) => entry.type === 'blob' && /^items\/.+\.json$/i.test(entry.path || ''))
+    .filter((entry) => {
+      const base = path.basename(entry.path, '.json').toUpperCase();
+      return ACCESSORY_FILE_HINTS.some((hint) => base.includes(hint));
+    })
+    .slice(0, 900);
+
+  const itemFiles = await mapLimit(candidatePaths, 8, async (entry) => {
+    const fileName = path.basename(entry.path);
+    const item = await fetchJsonOrNull(`${NEU_RAW_ITEM_URL}/${encodeURIComponent(fileName)}`);
+    if (!item) return null;
+    const internalId = item.internalname || path.basename(fileName, '.json');
+    if (!isAccessoryLikeItem(item, internalId)) return null;
+    const rarity = neuItemRarity(item);
+    const magicPower = MAGIC_POWER_BY_RARITY[rarity] || 0;
+    if (magicPower <= 0) return null;
+    const ingredients = parseNeuRecipe(item.recipe);
+    return {
+      id: internalId,
+      name: cleanNeuName(item.displayname || item.display_name || internalId.replace(/_/g, ' ')),
+      rarity,
+      magicPower,
+      soulbound: String(item.soulbound || item.coop_soulbound || '').toLowerCase() === 'true',
+      museum: Boolean(item.museum),
+      ingredients,
+    };
+  });
+
+  const byId = new Map();
+  itemFiles.filter(Boolean).forEach((item) => {
+    if (!byId.has(item.id)) byId.set(item.id, item);
+  });
+  const items = Array.from(byId.values());
+  accessoryCatalogCache = { time: Date.now(), items, sourceCount: candidatePaths.length };
+  return accessoryCatalogCache;
+}
+
+function normalizeUuid(value) {
+  return String(value || '').replace(/-/g, '').trim().toLowerCase();
+}
+
+async function resolveMinecraftUuid(player) {
+  const raw = String(player || '').trim();
+  if (!raw) return null;
+  const normalized = normalizeUuid(raw);
+  if (/^[0-9a-f]{32}$/.test(normalized)) return normalized;
+
+  const response = await axios.get(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(raw)}`, {
+    timeout: 10000,
+  });
+  return normalizeUuid(response.data?.id);
+}
+
+async function parseInventoryBlob(data) {
+  if (!data || typeof data !== 'string') return null;
+  try {
+    const compressed = Buffer.from(data, 'base64');
+    const inflated = zlib.gunzipSync(compressed);
+    const parsed = await nbt.parse(inflated);
+    return nbt.simplify(parsed.parsed);
+  } catch (error) {
+    return null;
+  }
+}
+
+function collectInventoryBlobs(value, blobs = [], pathParts = []) {
+  if (!value || typeof value !== 'object') return blobs;
+  if (typeof value.data === 'string' && value.data.length > 32) {
+    blobs.push({ path: pathParts.concat('data').join('.'), data: value.data });
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => collectInventoryBlobs(entry, blobs, pathParts.concat(String(index))));
+    return blobs;
+  }
+  Object.entries(value).forEach(([key, child]) => {
+    if (key === 'data') return;
+    collectInventoryBlobs(child, blobs, pathParts.concat(key));
+  });
+  return blobs;
+}
+
+function collectItemIdsFromNbt(value, ids = []) {
+  if (!value) return ids;
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectItemIdsFromNbt(entry, ids));
+    return ids;
+  }
+  if (typeof value !== 'object') return ids;
+
+  const extraId = value.tag?.ExtraAttributes?.id || value.ExtraAttributes?.id;
+  if (typeof extraId === 'string' && extraId.trim()) ids.push(extraId.trim().toUpperCase());
+
+  Object.values(value).forEach((child) => collectItemIdsFromNbt(child, ids));
+  return ids;
+}
+
+function selectSkyblockProfile(profiles, profileName, uuid) {
+  const list = Array.isArray(profiles) ? profiles : [];
+  if (profileName) {
+    const wanted = String(profileName).trim().toLowerCase();
+    const byName = list.find((profile) => String(profile.cute_name || '').toLowerCase() === wanted);
+    if (byName) return byName;
+  }
+  return list.find((profile) => profile.selected)
+    || list.slice().sort((a, b) => Number(b.members?.[uuid]?.last_save || 0) - Number(a.members?.[uuid]?.last_save || 0))[0]
+    || null;
+}
+
+app.get('/api/player-accessories', async (req, res) => {
+  try {
+    if (!HYPIXEL_API_KEY) {
+      return res.status(400).json({ error: 'Missing HYPIXEL_API_KEY on backend' });
+    }
+
+    const uuid = await resolveMinecraftUuid(req.query.player || req.query.uuid);
+    if (!uuid) return res.status(400).json({ error: 'Missing or invalid player' });
+
+    const response = await axios.get('https://api.hypixel.net/v2/skyblock/profiles', {
+      timeout: 15000,
+      params: { uuid },
+      headers: { 'API-Key': HYPIXEL_API_KEY },
+    });
+
+    if (!response.data?.success) {
+      return res.status(502).json({ error: response.data?.cause || 'Hypixel profile request failed' });
+    }
+
+    const profile = selectSkyblockProfile(response.data.profiles, req.query.profile, uuid);
+    if (!profile) return res.status(404).json({ error: 'No SkyBlock profiles found for this player' });
+
+    const member = profile.members?.[uuid];
+    if (!member) return res.status(404).json({ error: 'Player was not found in selected profile' });
+
+    const { items: accessoryCatalog } = await loadAccessoryCatalog();
+    const accessoryIds = new Set(accessoryCatalog.map((item) => item.id.toUpperCase()));
+    const blobs = collectInventoryBlobs(member);
+    const foundIds = new Set();
+    const parsedSources = [];
+
+    for (const blob of blobs) {
+      const parsed = await parseInventoryBlob(blob.data);
+      if (!parsed) continue;
+      const ids = collectItemIdsFromNbt(parsed)
+        .filter((id) => accessoryIds.has(id));
+      if (ids.length > 0) {
+        parsedSources.push({ path: blob.path, count: ids.length });
+        ids.forEach((id) => foundIds.add(id));
+      }
+    }
+
+    const rows = Array.from(foundIds)
+      .map((id) => {
+        const item = accessoryCatalog.find((entry) => entry.id.toUpperCase() === id);
+        return {
+          id,
+          name: item?.name || displayItemName(id),
+          rarity: item?.rarity || '',
+          magicPower: item?.magicPower || 0,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({
+      player: req.query.player || req.query.uuid,
+      uuid,
+      profileId: profile.profile_id,
+      profileName: profile.cute_name,
+      accessoryIds: rows.map((row) => row.id),
+      rows,
+      count: rows.length,
+      availableProfiles: (response.data.profiles || []).map((entry) => ({
+        profileId: entry.profile_id,
+        profileName: entry.cute_name,
+        selected: Boolean(entry.selected),
+      })),
+      parsedSources,
+    });
+  } catch (error) {
+    const status = error.response?.status;
+    const cause = error.response?.data?.cause || error.response?.data?.error || error.message;
+    console.error('Crash in player-accessories:', cause);
+    res.status(status === 403 ? 403 : 500).json({
+      error: status === 403 ? 'Hypixel API key was rejected' : 'Failed to load player accessories',
+      details: cause,
+    });
+  }
+});
 
 function isForgeCandidatePath(filePath) {
   const base = path.basename(filePath, '.json').toUpperCase();
@@ -2813,6 +3038,86 @@ app.get('/api/accessory-flips', async (req, res) => {
   } catch (error) {
     console.error('Crash in accessory-flips:', error.message);
     res.status(500).json({ error: 'Failed to calculate accessory flips', details: error.message });
+  }
+});
+
+app.get('/api/magic-power', async (req, res) => {
+  try {
+    await refreshRawBazaarCache();
+    const lbinData = await ensureLowestBinCache();
+    const { items, sourceCount, time } = await loadAccessoryCatalog();
+    const maxResults = Math.min(500, Math.max(10, parseInt(req.query.limit, 10) || 150));
+    const rarity = String(req.query.rarity || 'all').toUpperCase();
+    const maxCoinsPerMp = Number(req.query.maxCoinsPerMp || 0);
+    const minMagicPower = Number(req.query.minMagicPower || 0);
+    const includeSoulbound = req.query.includeSoulbound === 'true';
+    const includeCraft = req.query.includeCraft !== 'false';
+    const inMode = req.query.inMode || 'insta-buy';
+    const excludedIds = new Set(String(req.query.excludeIds || '')
+      .split(',')
+      .map((id) => id.trim().toUpperCase())
+      .filter(Boolean));
+
+    const pricedRows = await mapLimit(items, 8, async (item) => {
+      const directPricing = await getAccessoryOutputPrice(item.id, lbinData);
+      const directCost = directPricing.price > 0 ? directPricing.price : Infinity;
+
+      let craftCost = Infinity;
+      let ingredients = [];
+      let missing = [];
+      if (includeCraft && item.ingredients.length > 0) {
+        ingredients = item.ingredients.map((ingredient) => priceCraftIngredient(ingredient, lbinData, inMode));
+        missing = ingredients.filter((ingredient) => ingredient.missing).map((ingredient) => ingredient.id);
+        if (missing.length === 0) {
+          craftCost = ingredients.reduce((sum, ingredient) => sum + ingredient.totalCost, 0);
+        }
+      }
+
+      const bestCost = Math.min(directCost, craftCost);
+      const bestMethod = craftCost < directCost ? 'craft' : 'buy';
+      const coinsPerMagicPower = item.magicPower > 0 ? bestCost / item.magicPower : Infinity;
+
+      return {
+        ...item,
+        directCost: Number.isFinite(directCost) ? directCost : 0,
+        directSource: directPricing.source,
+        craftCost: Number.isFinite(craftCost) ? craftCost : 0,
+        bestCost,
+        bestMethod,
+        coinsPerMagicPower,
+        ingredients,
+        missing,
+        complete: Number.isFinite(bestCost) && bestCost > 0,
+      };
+    });
+
+    const rows = pricedRows
+      .filter((row) => row.complete)
+      .filter((row) => !excludedIds.has(row.id.toUpperCase()))
+      .filter((row) => includeSoulbound || !row.soulbound)
+      .filter((row) => rarity === 'ALL' || row.rarity === rarity)
+      .filter((row) => row.magicPower >= minMagicPower)
+      .filter((row) => maxCoinsPerMp <= 0 || row.coinsPerMagicPower <= maxCoinsPerMp)
+      .sort((a, b) => a.coinsPerMagicPower - b.coinsPerMagicPower || a.bestCost - b.bestCost)
+      .slice(0, maxResults)
+      .map((row) => ({
+        ...row,
+        bestCost: Math.round(row.bestCost),
+        coinsPerMagicPower: Math.round(row.coinsPerMagicPower),
+      }));
+
+    res.json({
+      rows,
+      updatedAt: Date.now(),
+      catalogCacheAgeMs: Date.now() - time,
+      accessoriesScanned: items.length,
+      sourceCandidates: sourceCount,
+      lbinAvailable: Object.keys(lbinData).length > 0,
+      magicPowerByRarity: MAGIC_POWER_BY_RARITY,
+    });
+  } catch (error) {
+    console.error('Crash in magic-power:', error.message);
+    res.status(500).json({ error: 'Failed to calculate magic power optimizer', details: error.message });
   }
 });
 
