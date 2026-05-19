@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchAuctions, fetchSkyCoflHistory } from '../services/api';
+import { API_URL, fetchAuctions, fetchSkyCoflHistory } from '../services/api';
 
 const formatCoins = (num) => {
   if (!num) return '0';
@@ -27,7 +27,7 @@ export default function AuctionFlipper() {
         
         // Fetch background LBIN data for accurate modern snipe evaluations!
         try {
-          const lbinRes = await fetch('http://localhost:3000/api/lowestbin');
+          const lbinRes = await fetch(`${API_URL}/lowestbin`);
           if (lbinRes.ok) {
             const lbinJson = await lbinRes.json();
             if (active) setLbinData(lbinJson);

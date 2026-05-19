@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchBazaar, fetchSkyCoflHistory } from '../services/api';
+import { API_URL, fetchBazaar, fetchSkyCoflHistory } from '../services/api';
 
 const formatCoins = (num) => {
   if (!num) return '0';
@@ -43,7 +43,7 @@ export default function ItemBuilder() {
         setBazaarData(bzMap);
         
         // Concurrently fetch Moulberry's Live LBIN via internal CORS proxy
-        const lbinRes = await fetch('http://localhost:3000/api/lowestbin');
+        const lbinRes = await fetch(`${API_URL}/lowestbin`);
         const lbinJson = await lbinRes.json();
         setLbinData(lbinJson);
 

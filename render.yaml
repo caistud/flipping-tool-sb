@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: skyblock-flip-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: ENABLE_SUPABASE_MARKET_SYNC
+        value: false
+      - key: HYPIXEL_API_KEY
+        sync: false
+      - key: SKYCOFL_API_KEY
+        sync: false

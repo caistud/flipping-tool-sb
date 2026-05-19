@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Search, Plus, Trash2, Save, X, CheckCircle, AlertCircle, Pencil } from 'lucide-react';
+import { API_URL } from '../services/api';
 
 const FAMILIES = ['NONE', 'REPTILE'];
 
@@ -243,14 +244,14 @@ export default function CustomRecipeManager({ onClose }) {
 
   useEffect(() => {
     Promise.all([
-      axios.get('http://localhost:3000/api/shard-list'),
-      axios.get('http://localhost:3000/api/custom-recipes'),
+      axios.get(`${API_URL}/shard-list`),
+      axios.get(`${API_URL}/custom-recipes`),
     ]).then(([sl, cr]) => { setShards(sl.data); setRecipes(cr.data); setLoading(false); })
       .catch(() => { flash('error', 'Failed to load data.'); setLoading(false); });
   }, []);
 
   const refetch = async () => {
-    const cr = await axios.get('http://localhost:3000/api/custom-recipes');
+    const cr = await axios.get(`${API_URL}/custom-recipes`);
     setRecipes(cr.data);
   };
 
@@ -282,8 +283,8 @@ export default function CustomRecipeManager({ onClose }) {
 
     setSaving(true);
     try {
-      if (editIndex !== null) await axios.delete(`http://localhost:3000/api/custom-recipes/${editIndex}`);
-      await axios.post('http://localhost:3000/api/custom-recipes', {
+      if (editIndex !== null) await axios.delete(`${API_URL}/custom-recipes/${editIndex}`);
+      await axios.post(`${API_URL}/custom-recipes`, {
         outputInternalId: outputShard.internalId,
         outputName: outputShard.name,
         qtyYielded: parseInt(qtyYielded) || 2,
@@ -301,7 +302,7 @@ export default function CustomRecipeManager({ onClose }) {
 
   const handleDelete = async (index) => {
     try {
-      await axios.delete(`http://localhost:3000/api/custom-recipes/${index}`);
+      await axios.delete(`${API_URL}/custom-recipes/${index}`);
       await refetch();
       flash('success', 'Recipe deleted.');
       if (editIndex === index) resetForm();

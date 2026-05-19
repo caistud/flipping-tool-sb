@@ -8,6 +8,15 @@ const formatCoins = (num) => {
   return num.toFixed(1);
 };
 
+const strategyNotes = {
+  bz_bo_so: 'Buy order at highest buy order, then sell order at lowest sell offer. This is the normal Bazaar spread flip.',
+  bz_ib_so: 'Uses the current top sell offer for both instant-buy cost and sell-order revenue, so profitable rows are rare without deeper order-book simulation.',
+  bz_ib_is: 'Instant-buy then instant-sell crosses the spread twice, so this is normally negative.',
+  bz_bo_is: 'Buy order then instant-sell uses the current top buy order on both sides, so profitable rows are rare without price movement.',
+  npc_insta: 'Instant-buy from sell offers, then sell to NPC. Requires live NPC sell prices.',
+  npc_order: 'Buy order from Bazaar, then sell to NPC. Requires live NPC sell prices.',
+};
+
 export default function BazaarFlipper() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +41,7 @@ export default function BazaarFlipper() {
           const bo_so_Profit = item.buyPrice - item.sellPrice;
           const bo_so_Margin = item.sellPrice > 0 ? (bo_so_Profit / item.sellPrice) * 100 : 0;
           
-          // bz_ib_so (Insta-Buy -> Sell Offer)
+          // bz_ib_so (Insta-Buy -> Sell Offer): same top sell-offer price on both sides without order-book depth.
           const ib_so_Profit = item.buyPrice - item.buyPrice;
           const ib_so_Margin = item.buyPrice > 0 ? (ib_so_Profit / item.buyPrice) * 100 : 0;
           
@@ -40,7 +49,7 @@ export default function BazaarFlipper() {
           const ib_is_Profit = item.sellPrice - item.buyPrice;
           const ib_is_Margin = item.buyPrice > 0 ? (ib_is_Profit / item.buyPrice) * 100 : 0;
           
-          // bz_bo_is (Buy Order -> Insta-Sell)
+          // bz_bo_is (Buy Order -> Insta-Sell): same top buy-order price on both sides without price movement.
           const bo_is_Profit = item.sellPrice - item.sellPrice;
           const bo_is_Margin = item.sellPrice > 0 ? (bo_is_Profit / item.sellPrice) * 100 : 0;
           
@@ -117,6 +126,7 @@ export default function BazaarFlipper() {
       // (a item with 0 price or 0 volume is impossible to interact with in-game)
       if (a.buyPrice <= 0 || a.sellPrice <= 0) return false;
       if (a.buyVolume <= 0 || a.sellVolume <= 0) return false;
+      if ((flipMode === 'npc_insta' || flipMode === 'npc_order') && (!a.npc_sell_price || a.npc_sell_price <= 0)) return false;
       
       const combinedVolume = Number(a.buyVolume) + Number(a.sellVolume);
       if (combinedVolume < minVolume) return false;
@@ -249,6 +259,9 @@ export default function BazaarFlipper() {
           </button>
         </div>
       </div>
+      <div style={{ margin: '-0.75rem 0 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+        {strategyNotes[flipMode]}
+      </div>
 
       <div style={{ overflowX: 'auto' }}>
         <table>
@@ -290,8 +303,8 @@ export default function BazaarFlipper() {
                 <td className="text-muted">{formatCoins(item.buyVolume)} / {formatCoins(item.sellVolume)}</td>
               </tr>
             ))}
-            {data.length === 0 && (
-              <tr><td colSpan="6" style={{textAlign: 'center'}}>No profitable flips found right now.</td></tr>
+            {displayData.length === 0 && (
+              <tr><td colSpan="6" style={{textAlign: 'center'}}>No flips found for this strategy and filter set.</td></tr>
             )}
           </tbody>
         </table>

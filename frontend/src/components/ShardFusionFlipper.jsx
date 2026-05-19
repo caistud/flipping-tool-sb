@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { RefreshCw, ChevronDown, ChevronRight, Settings, ShoppingCart, Copy, Check, Package } from 'lucide-react';
 import CustomRecipeManager from './CustomRecipeManager';
+import { API_URL } from '../services/api';
 
 const formatCoins = (num) => {
   if (!num && num !== 0) return '0';
@@ -85,6 +86,20 @@ function CraftTreeNode({ node, depth = 0 }) {
         }}>
           {isCraft ? 'CRAFT' : 'BUY'}
         </span>
+        {node.acquisitionHint === 'DIRECT_BUY_CHEAPER' && (
+          <span title="This recipe is expanded for visibility, but buying this ingredient is currently cheaper." style={{
+            fontSize: '0.62rem',
+            fontWeight: 'bold',
+            padding: '1px 5px',
+            borderRadius: '4px',
+            background: 'rgba(255,184,108,0.12)',
+            color: '#ffb86c',
+            border: '1px solid rgba(255,184,108,0.35)',
+            flexShrink: 0,
+          }}>
+            BUY CHEAPER
+          </span>
+        )}
         <span style={{ fontWeight: depth === 0 ? 'bold' : 'normal', color: 'var(--text-primary)', flex: 1 }}>
           {Math.ceil(node.qty)}x <span style={{ color: isCraft ? '#fccb0b' : '#fff' }}>{node.name}</span>
         </span>
@@ -150,7 +165,7 @@ function BudgetOptimizer({ buffs, tradeMode, liquidityTier, uncapVolume, filterM
         uncapped: uncapVolume,
         filterManipulated,
       });
-      const res = await axios.get(`http://localhost:3000/api/batch-optimize?${params}`);
+      const res = await axios.get(`${API_URL}/batch-optimize?${params}`);
       setResult(res.data);
     } catch(e) {
       setError('Failed to run optimizer: ' + (e.response?.data?.error || e.message));
@@ -419,19 +434,22 @@ export default function ShardFusionFlipper() {
     catch { return {crocodile: 0, sea_serpent: 0, tiamat: 0}; }
   });
 
-  const [tradeMode, setTradeMode] = useState('buy-order_insta-sell');
+  const [tradeMode, setTradeMode] = useState('insta-buy_buy-order');
   const [liquidityTier, setLiquidityTier] = useState('medium');
   const [viewMode, setViewMode] = useState('absolute');  // 'absolute' | 'total' | 'optimizer'
+  const [rankBy, setRankBy] = useState('profit'); // 'profit' | 'volume'
   const [searchQuery, setSearchQuery] = useState('');
   const [uncapVolume, setUncapVolume] = useState(false);
   const [filterManipulated, setFilterManipulated] = useState(true);
 
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState('');
 
   // Craft tree
   const [expandedRowId, setExpandedRowId] = useState(null);
   const [craftTree, setCraftTree] = useState(null);
+  const [craftAlternatives, setCraftAlternatives] = useState([]);
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeMeta, setTreeMeta] = useState(null);
   const [showRecipeManager, setShowRecipeManager] = useState(false);
@@ -442,14 +460,28 @@ export default function ShardFusionFlipper() {
   };
 
   const abortRef = useRef(null);
+  const requestSeqRef = useRef(0);
+  const lastRequestKeyRef = useRef('');
+
+  const displayedLeaderboard = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return leaderboard;
+    return leaderboard.filter(f =>
+      f.name.toLowerCase().includes(query) ||
+      f.id.toLowerCase().includes(query)
+    );
+  }, [leaderboard, searchQuery]);
 
   const fetchLeaderboard = useCallback(async () => {
     // Cancel any in-flight request before starting a new one
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const requestId = requestSeqRef.current + 1;
+    requestSeqRef.current = requestId;
 
     setLoading(true);
+    setLeaderboardError('');
     try {
       const params = new URLSearchParams({
         croc: buffs.crocodile,
@@ -457,28 +489,39 @@ export default function ShardFusionFlipper() {
         tia: buffs.tiamat,
         salesTier: liquidityTier,
         tradeMode,
-        sortMode: viewMode === 'optimizer' ? 'absolute' : viewMode,
+        sortMode: rankBy === 'volume' ? 'volume' : (viewMode === 'optimizer' ? 'absolute' : viewMode),
         uncapped: uncapVolume,
         filterManipulated,
       });
-      const res = await axios.get(`http://localhost:3000/api/best-fusions?${params.toString()}`, {
-        signal: controller.signal,
-        timeout: 10000,
-      });
-      let filtered = res.data;
-      if (searchQuery) {
-        filtered = filtered.filter(f =>
-          f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          f.id.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+      const requestKey = params.toString();
+      if (requestKey !== lastRequestKeyRef.current) {
+        lastRequestKeyRef.current = requestKey;
+        setLeaderboard([]);
+        setExpandedRowId(null);
+        setCraftTree(null);
+        setCraftAlternatives([]);
+        setTreeMeta(null);
       }
-      setLeaderboard(filtered);
+      const res = await axios.get(`${API_URL}/best-fusions?${params.toString()}`, {
+        signal: controller.signal,
+        timeout: 30000,
+      });
+      if (requestSeqRef.current === requestId) {
+        setLeaderboard(Array.isArray(res.data) ? res.data : []);
+      }
     } catch(e) {
       if (axios.isCancel(e) || e.name === 'CanceledError') return; // Silently ignore cancelled requests
       console.error('Failed to fetch best fusions', e);
+      if (requestSeqRef.current === requestId) {
+        setLeaderboardError(e.response?.data?.error || e.message || 'Failed to fetch leaderboard');
+      }
+    } finally {
+      if (requestSeqRef.current === requestId) {
+        setLoading(false);
+        if (abortRef.current === controller) abortRef.current = null;
+      }
     }
-    setLoading(false);
-  }, [buffs, liquidityTier, tradeMode, searchQuery, viewMode, filterManipulated, uncapVolume]);
+  }, [buffs, liquidityTier, tradeMode, viewMode, rankBy, filterManipulated, uncapVolume]);
 
   useEffect(() => {
     if (viewMode !== 'optimizer') {
@@ -495,30 +538,57 @@ export default function ShardFusionFlipper() {
     if (expandedRowId === row.id) {
       setExpandedRowId(null);
       setCraftTree(null);
+      setCraftAlternatives([]);
       setTreeMeta(null);
       return;
     }
     setExpandedRowId(row.id);
     setCraftTree(buildRecipeTreeFromRow(row));
+    setCraftAlternatives([]);
     setTreeMeta(null);
     setTreeLoading(true);
 
     try {
       const inMode = tradeMode.split('_')[0];
-      const res = await axios.get(`http://localhost:3000/api/craft-tree/${row.id}?qty=${row.yieldsPerCraft}&inMode=${inMode}&depth=5`, {
+      const params = new URLSearchParams({
+        qty: row.yieldsPerCraft,
+        inMode,
+        depth: 6,
+        alternatives: 6,
+      });
+      if (row.recipeKey) params.set('recipeKey', row.recipeKey);
+      const res = await axios.get(`${API_URL}/craft-tree/${row.id}?${params.toString()}`, {
         timeout: 5000,
       });
       setCraftTree(res.data.tree);
+      setCraftAlternatives(res.data.alternatives || []);
       setTreeMeta({
         savings: res.data.savings,
         savingsPercent: res.data.savingsPercent,
         directBuy: res.data.directBuyCost,
+        fullRecipeCost: res.data.fullRecipeCost,
+        cheapestCost: res.data.cheapestCost,
       });
     } catch(e) {
       console.error('Failed to fetch expanded craft tree', e);
     }
 
     setTreeLoading(false);
+  };
+
+  const selectCraftAlternative = (alternative) => {
+    setCraftTree(alternative.tree);
+    setCraftAlternatives(prev => prev.map(alt => ({
+      ...alt,
+      selected: alt.recipeKey === alternative.recipeKey,
+    })));
+    setTreeMeta({
+      savings: alternative.savings,
+      savingsPercent: alternative.savingsPercent,
+      directBuy: treeMeta?.directBuy,
+      fullRecipeCost: alternative.totalCost,
+      cheapestCost: alternative.cheapestTotalCost,
+    });
   };
 
   const colCount = viewMode === 'absolute' ? 7 : 5;
@@ -581,6 +651,9 @@ export default function ShardFusionFlipper() {
             <option value="insta-buy_buy-order">Insta-buy → Sell offer (Bot)</option>
             <option value="insta-buy_sell-offer">Insta-buy → Sell offer</option>
           </select>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '0.35rem' }}>
+            Inputs priced as {tradeMode.startsWith('insta-buy') ? 'instabuy from sell offers' : 'buy orders'}.
+          </div>
         </div>
         <div>
           <label style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }}>Volume Filter:</label>
@@ -591,6 +664,15 @@ export default function ShardFusionFlipper() {
             <option value="high">High</option>
           </select>
         </div>
+        {viewMode !== 'optimizer' && (
+          <div>
+            <label style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }}>Sort By:</label>
+            <select value={rankBy} onChange={(e) => setRankBy(e.target.value)} style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '0.5rem', borderRadius: '8px', outline: 'none', cursor: 'pointer' }}>
+              <option value="profit">Profit</option>
+              <option value="volume">Volume</option>
+            </select>
+          </div>
+        )}
         {viewMode !== 'optimizer' && (
           <div>
             <label style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }}>Search:</label>
@@ -653,6 +735,16 @@ export default function ShardFusionFlipper() {
       {/* ── Leaderboard Table ── */}
       {viewMode !== 'optimizer' && (
         <div style={{ overflowX: 'auto' }}>
+          <div style={{ margin: '0 0 0.75rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            Showing {displayedLeaderboard.length.toLocaleString()} profitable shard{displayedLeaderboard.length === 1 ? '' : 's'}
+            {rankBy === 'volume' ? ' sorted by volume' : ' sorted by profit'}
+            {searchQuery.trim() && leaderboard.length !== displayedLeaderboard.length && ` (${leaderboard.length.toLocaleString()} before search)`}
+          </div>
+          {leaderboardError && (
+            <div style={{ margin: '0 0 0.75rem', color: 'var(--text-danger)', fontSize: '0.85rem' }}>
+              Failed to update leaderboard: {leaderboardError}
+            </div>
+          )}
           <table>
             <thead>
               <tr>
@@ -677,7 +769,14 @@ export default function ShardFusionFlipper() {
               </tr>
             </thead>
             <tbody>
-              {leaderboard.map((row, index) => (
+              {displayedLeaderboard.length === 0 && loading && (
+                <tr>
+                  <td colSpan={colCount} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    Updating leaderboard...
+                  </td>
+                </tr>
+              )}
+              {displayedLeaderboard.map((row, index) => (
                 <React.Fragment key={`${row.id}_${index}`}>
                   <tr
                     onClick={() => handleRowClick(row)}
@@ -696,10 +795,15 @@ export default function ShardFusionFlipper() {
                               {row.roiPerCraft}% ROI
                             </span>
                             {row.isTargetCrafted && <span style={{ color: '#fccb0b', fontWeight: 'bold', border: '1px solid #fccb0b', padding: '1px 4px', borderRadius: '4px', fontSize: '0.65rem' }}>🎯 Recursive</span>}
+                            {row.manipulationWarning && (
+                              <span title={`Sell-order price is ${Number(row.sellOrderPremium || 0).toFixed(1)}x the instant-sell price.`} style={{ color: '#ffb86c', fontWeight: 'bold', border: '1px solid rgba(255,184,108,0.45)', background: 'rgba(255,184,108,0.12)', padding: '1px 4px', borderRadius: '4px', fontSize: '0.65rem' }}>
+                                Spread {Number(row.sellOrderPremium || 0).toFixed(1)}x
+                              </span>
+                            )}
                           </div>
                           {/* BUG FIX: use qty (not perCraftQty) — these are already the correct per-craft-run quantities */}
                           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            {row.inputs.map(i => `${Math.ceil(i.qty)}x ${i.name.replace(/_/g, ' ')}`).join(' + ')}
+                            {(row.recipeInputs || row.inputs).map(i => `${Math.ceil(i.qty)}x ${i.name.replace(/_/g, ' ')}`).join(' + ')}
                             <span style={{ marginLeft: 8, color: '#5865F2', fontSize: '0.72rem' }}>→ {row.yieldsPerCraft}× per craft</span>
                           </div>
                         </div>
@@ -708,7 +812,9 @@ export default function ShardFusionFlipper() {
                     {viewMode === 'absolute' ? (
                       <>
                         <td>{formatCoins(row.inputCost)}</td>
-                        <td>{formatCoins(tradeMode.includes('insta-sell') ? row.marketSell : row.marketBuy)}</td>
+                        <td title={!tradeMode.includes('insta-sell') && row.marketSell ? `Instant-sell is ${formatCoins(row.marketSell)}. Sell-order premium: ${Number(row.sellOrderPremium || 0).toFixed(1)}x.` : undefined}>
+                          {formatCoins(tradeMode.includes('insta-sell') ? row.marketSell : row.marketBuy)}
+                        </td>
                         <td className="text-success">+{formatCoins(Math.max(0, row.absoluteProfit))}</td>
                         <td style={{ color: row.roiPerCraft >= 10 ? '#23a559' : '#fccb0b', fontWeight: 'bold' }}>{row.roiPerCraft}%</td>
                         <td className="text-success" title={`${formatCoins(row.absoluteProfit)} × ${row.maxVolume} shards`}>+{formatCoins(Math.max(0, row.totalProfit))}</td>
@@ -754,9 +860,52 @@ export default function ShardFusionFlipper() {
                               </span>
                             )}
                           </div>
+                          {treeMeta && Number.isFinite(treeMeta.fullRecipeCost) && Number.isFinite(treeMeta.cheapestCost) && (
+                            <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                              <span>Full recipe tree: <strong style={{ color: '#fccb0b', fontFamily: 'monospace' }}>{formatCoins(treeMeta.fullRecipeCost)}</strong></span>
+                              <span>Cheapest buy/craft path: <strong style={{ color: '#23a559', fontFamily: 'monospace' }}>{formatCoins(treeMeta.cheapestCost)}</strong></span>
+                            </div>
+                          )}
                           {treeLoading && (
                             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                               Computing optimal crafting path...
+                            </div>
+                          )}
+                          {craftAlternatives.length > 0 && !treeLoading && (
+                            <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                Recipe Options
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                {craftAlternatives.map((alternative, altIndex) => (
+                                  <button
+                                    key={alternative.recipeKey || altIndex}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      selectCraftAlternative(alternative);
+                                    }}
+                                    style={{
+                                      background: alternative.selected ? 'rgba(88,101,242,0.22)' : 'rgba(255,255,255,0.04)',
+                                      border: `1px solid ${alternative.selected ? 'rgba(88,101,242,0.7)' : 'var(--glass-border)'}`,
+                                      color: 'var(--text-primary)',
+                                      borderRadius: '8px',
+                                      padding: '0.55rem 0.7rem',
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                      minWidth: '220px',
+                                      maxWidth: '360px',
+                                    }}
+                                  >
+                                    <div style={{ fontSize: '0.78rem', color: alternative.selected ? '#a0a8f0' : 'var(--text-muted)', marginBottom: '0.25rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {alternative.recipeInputs.map(input => `${Math.ceil(input.qty)}x ${input.name.replace(/_/g, ' ')}`).join(' + ')}
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', fontFamily: 'monospace', fontSize: '0.82rem' }}>
+                                      <span>{formatCoins(alternative.unitPrice)} ea</span>
+                                      <span style={{ color: '#23a559', fontWeight: 'bold' }}>{formatCoins(alternative.totalCost)}</span>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           )}
                           {craftTree && !treeLoading && (
@@ -775,10 +924,10 @@ export default function ShardFusionFlipper() {
                   )}
                 </React.Fragment>
               ))}
-              {leaderboard.length === 0 && !loading && (
+              {displayedLeaderboard.length === 0 && !loading && (
                 <tr>
                   <td colSpan={colCount} style={{ textAlign: 'center', padding: '2rem' }}>
-                    No fusions found matching criteria.
+                    {leaderboardError ? 'Leaderboard update failed.' : 'No fusions found matching criteria.'}
                   </td>
                 </tr>
               )}
@@ -788,7 +937,7 @@ export default function ShardFusionFlipper() {
       )}
 
       {/* ── Market Summary (bot-style footer) ── */}
-      {viewMode === 'total' && leaderboard.length > 0 && (
+      {viewMode === 'total' && displayedLeaderboard.length > 0 && (
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem',
           marginTop: '1.5rem', padding: '1.25rem 1.5rem',
@@ -798,19 +947,19 @@ export default function ShardFusionFlipper() {
           <div style={{ textAlign: 'center' }}>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: 4 }}>📊 Total Market Opportunity</div>
             <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fccb0b', fontFamily: 'monospace' }}>
-              {formatCoins(leaderboard.reduce((s, r) => s + (r.totalProfit || 0), 0))}
+              {formatCoins(displayedLeaderboard.reduce((s, r) => s + (r.totalProfit || 0), 0))}
             </div>
           </div>
           <div style={{ textAlign: 'center', borderLeft: '1px solid var(--glass-border)', borderRight: '1px solid var(--glass-border)' }}>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: 4 }}>✅ Profitable Recipes</div>
             <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#23a559', fontFamily: 'monospace' }}>
-              {leaderboard.length}
+              {displayedLeaderboard.length}
             </div>
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: 4 }}>🏆 Best Opportunity</div>
             <div style={{ fontSize: '1rem', fontWeight: 'bold', color: '#fff' }}>
-              {leaderboard[0]?.name} · {formatCoinsShort(leaderboard[0]?.totalProfit)}
+              {displayedLeaderboard[0]?.name} · {formatCoinsShort(displayedLeaderboard[0]?.totalProfit)}
             </div>
           </div>
         </div>

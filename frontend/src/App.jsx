@@ -5,13 +5,33 @@ import BazaarFlipper from './components/BazaarFlipper'
 import AuctionFlipper from './components/AuctionFlipper'
 import ShardFusionFlipper from './components/ShardFusionFlipper'
 import ItemBuilder from './components/ItemBuilder'
+import MayorFlipper from './components/MayorFlipper'
+import AccessoryFlipper from './components/AccessoryFlipper'
+import HuntingGuide from './components/HuntingGuide'
+import InvestmentStrategies from './components/InvestmentStrategies'
+import HuntFuseStrat from './components/HuntFuseStrat'
+import ForgeFlipper from './components/ForgeFlipper'
+import { API_URL } from './services/api'
+
+const features = [
+  { key: 'bazaar', label: 'Bazaar Flipping' },
+  { key: 'auctions', label: 'AH Sniping' },
+  { key: 'accessories', label: 'Accessory Craft Flips' },
+  { key: 'forge', label: 'Forge Profit Flips' },
+  { key: 'shards', label: 'Shard Fusions' },
+  { key: 'hunting', label: 'Hunting Guide' },
+  { key: 'huntFuse', label: 'Hunt + Fuse Strat' },
+  { key: 'strategies', label: 'Investment Strategies' },
+  { key: 'mayors', label: 'Mayor Flips' },
+  { key: 'builder', label: 'Lowball Calculator' },
+]
 
 function SettingsPanel() {
   const [apiKey, setApiKey] = useState('')
   const [status, setStatus] = useState('')
 
   useEffect(() => {
-    axios.get('http://localhost:3000/api/settings/apikey')
+    axios.get(`${API_URL}/settings/apikey`)
       .then(res => setApiKey(res.data.apikey))
       .catch(() => setStatus('Failed to load key'))
   }, [])
@@ -19,7 +39,7 @@ function SettingsPanel() {
   const handleUpdate = async () => {
     try {
       setStatus('Saving...')
-      await axios.post('http://localhost:3000/api/settings/apikey', { apikey: apiKey })
+      await axios.post(`${API_URL}/settings/apikey`, { apikey: apiKey })
       setStatus('Key saved and loaded!')
       setTimeout(() => setStatus(''), 3000)
     } catch (err) {
@@ -30,7 +50,7 @@ function SettingsPanel() {
   const handleRestart = async () => {
     try {
       setStatus('Restarting backend...')
-      await axios.post('http://localhost:3000/api/settings/restart')
+      await axios.post(`${API_URL}/settings/restart`)
       setTimeout(() => { setStatus('Backend restarted!'); setTimeout(() => setStatus(''), 2000) }, 3000)
     } catch (err) {
       setStatus('Failed to restart')
@@ -63,7 +83,13 @@ function App() {
     switch (activeTab) {
       case 'bazaar': return <BazaarFlipper />
       case 'auctions': return <AuctionFlipper />
+      case 'accessories': return <AccessoryFlipper />
+      case 'forge': return <ForgeFlipper />
       case 'shards': return <ShardFusionFlipper />
+      case 'hunting': return <HuntingGuide />
+      case 'huntFuse': return <HuntFuseStrat />
+      case 'strategies': return <InvestmentStrategies />
+      case 'mayors': return <MayorFlipper />
       case 'builder': return <ItemBuilder />
       default: return null
     }
@@ -77,32 +103,19 @@ function App() {
           <div className="logo-text">Skyblock Flips</div>
         </div>
         
-        <nav className="nav-tabs">
-          <button 
-            className={`tab-button ${activeTab === 'bazaar' ? 'active' : ''}`}
-            onClick={() => setActiveTab('bazaar')}
+        <div className="feature-select-wrap">
+          <label htmlFor="feature-select">Feature</label>
+          <select
+            id="feature-select"
+            className="feature-select"
+            value={activeTab}
+            onChange={(event) => setActiveTab(event.target.value)}
           >
-            Bazaar Flipping
-          </button>
-          <button 
-            className={`tab-button ${activeTab === 'auctions' ? 'active' : ''}`}
-            onClick={() => setActiveTab('auctions')}
-          >
-            AH Sniping
-          </button>
-          <button 
-            className={`tab-button ${activeTab === 'shards' ? 'active' : ''}`}
-            onClick={() => setActiveTab('shards')}
-          >
-            Shard Fusions
-          </button>
-          <button 
-            className={`tab-button ${activeTab === 'builder' ? 'active' : ''}`}
-            onClick={() => setActiveTab('builder')}
-          >
-            Lowball Calculator
-          </button>
-        </nav>
+            {features.map((feature) => (
+              <option key={feature.key} value={feature.key}>{feature.label}</option>
+            ))}
+          </select>
+        </div>
       </header>
 
       <SettingsPanel />
