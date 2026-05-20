@@ -17,6 +17,78 @@ const parseExcludedIds = (raw) => raw
   .map((value) => value.trim().toUpperCase())
   .filter(Boolean);
 
+const betterBudgetPlan = (candidate, current) => {
+  if (!current) return candidate;
+  if (candidate.totalMagicPower !== current.totalMagicPower) return candidate.totalMagicPower > current.totalMagicPower ? candidate : current;
+  if (candidate.totalCost !== current.totalCost) return candidate.totalCost < current.totalCost ? candidate : current;
+  return candidate.rows.length < current.rows.length ? candidate : current;
+};
+
+const betterTargetPlan = (candidate, current, targetMp) => {
+  if (!current) return candidate;
+  const candidateComplete = candidate.totalMagicPower >= targetMp;
+  const currentComplete = current.totalMagicPower >= targetMp;
+  if (candidateComplete !== currentComplete) return candidateComplete ? candidate : current;
+  if (candidateComplete && candidate.totalCost !== current.totalCost) return candidate.totalCost < current.totalCost ? candidate : current;
+  if (!candidateComplete && candidate.totalMagicPower !== current.totalMagicPower) return candidate.totalMagicPower > current.totalMagicPower ? candidate : current;
+  if (candidate.totalCost !== current.totalCost) return candidate.totalCost < current.totalCost ? candidate : current;
+  return candidate.rows.length < current.rows.length ? candidate : current;
+};
+
+const optimizeForBudget = (candidates, budget) => {
+  const states = new Map([[0, { rows: [], totalCost: 0, totalMagicPower: 0 }]]);
+  let best = states.get(0);
+
+  for (const row of candidates) {
+    const cost = Math.ceil(Number(row.bestCost) || 0);
+    const mp = Number(row.magicPower) || 0;
+    if (cost <= 0 || mp <= 0 || cost > budget) continue;
+
+    const snapshot = Array.from(states.values());
+    for (const state of snapshot) {
+      const nextCost = state.totalCost + cost;
+      if (nextCost > budget) continue;
+      const next = {
+        rows: [...state.rows, row],
+        totalCost: nextCost,
+        totalMagicPower: state.totalMagicPower + mp,
+      };
+      const currentAtCost = states.get(nextCost);
+      states.set(nextCost, betterBudgetPlan(next, currentAtCost));
+      best = betterBudgetPlan(next, best);
+    }
+  }
+
+  return best || { rows: [], totalCost: 0, totalMagicPower: 0 };
+};
+
+const optimizeForTarget = (candidates, targetMp) => {
+  const maxMp = targetMp + Math.max(0, ...candidates.map((row) => Number(row.magicPower) || 0));
+  const states = new Map([[0, { rows: [], totalCost: 0, totalMagicPower: 0 }]]);
+  let best = null;
+
+  for (const row of candidates) {
+    const cost = Math.ceil(Number(row.bestCost) || 0);
+    const mp = Number(row.magicPower) || 0;
+    if (cost <= 0 || mp <= 0) continue;
+
+    const snapshot = Array.from(states.values());
+    for (const state of snapshot) {
+      const nextMp = Math.min(maxMp, state.totalMagicPower + mp);
+      const next = {
+        rows: [...state.rows, row],
+        totalCost: state.totalCost + cost,
+        totalMagicPower: state.totalMagicPower + mp,
+      };
+      const currentAtMp = states.get(nextMp);
+      states.set(nextMp, betterTargetPlan(next, currentAtMp, targetMp));
+      best = betterTargetPlan(next, best, targetMp);
+    }
+  }
+
+  return best || { rows: [], totalCost: 0, totalMagicPower: 0 };
+};
+
 export default function MagicPowerOptimizer() {
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -28,6 +100,9 @@ export default function MagicPowerOptimizer() {
   const [includeCraft, setIncludeCraft] = useState(true);
   const [includeSoulbound, setIncludeSoulbound] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [planMode, setPlanMode] = useState('budget');
+  const [budgetInput, setBudgetInput] = useState('');
+  const [targetMpInput, setTargetMpInput] = useState('');
   const [excludedText, setExcludedText] = useState(() => localStorage.getItem('skyblock_mp_excluded_ids') || '');
   const [playerName, setPlayerName] = useState(() => localStorage.getItem('skyblock_mp_player') || '');
   const [profileName, setProfileName] = useState(() => localStorage.getItem('skyblock_mp_profile') || '');
@@ -86,6 +161,46 @@ export default function MagicPowerOptimizer() {
       || row.rarity.toLowerCase().includes(query)
     ));
   }, [rows, searchQuery]);
+
+  const parseCoinInput = (raw) => {
+    const value = String(raw || '').trim().toLowerCase().replace(/,/g, '');
+    if (!value) return 0;
+    if (value.endsWith('b')) return Number(value.slice(0, -1)) * 1_000_000_000;
+    if (value.endsWith('m')) return Number(value.slice(0, -1)) * 1_000_000;
+    if (value.endsWith('k')) return Number(value.slice(0, -1)) * 1_000;
+    return Number(value) || 0;
+  };
+
+  const purchasePlan = useMemo(() => {
+    const candidates = rows
+      .filter((row) => Number(row.bestCost) > 0 && Number(row.magicPower) > 0)
+      .sort((a, b) => a.coinsPerMagicPower - b.coinsPerMagicPower || a.bestCost - b.bestCost);
+
+    const budget = parseCoinInput(budgetInput);
+    const targetMp = Number(targetMpInput) || 0;
+
+    if (planMode === 'budget') {
+      if (budget <= 0) return { rows: [], totalCost: 0, totalMagicPower: 0, remainingBudget: 0, complete: false };
+      const best = optimizeForBudget(candidates, Math.floor(budget));
+      return {
+        rows: best.rows.sort((a, b) => a.coinsPerMagicPower - b.coinsPerMagicPower || a.bestCost - b.bestCost),
+        totalCost: best.totalCost,
+        totalMagicPower: best.totalMagicPower,
+        remainingBudget: Math.max(0, budget - best.totalCost),
+        complete: best.rows.length > 0,
+      };
+    }
+
+    if (targetMp <= 0) return { rows: [], totalCost: 0, totalMagicPower: 0, remainingBudget: 0, complete: false };
+    const best = optimizeForTarget(candidates, Math.ceil(targetMp));
+    return {
+      rows: best.rows.sort((a, b) => a.coinsPerMagicPower - b.coinsPerMagicPower || a.bestCost - b.bestCost),
+      totalCost: best.totalCost,
+      totalMagicPower: best.totalMagicPower,
+      remainingBudget: 0,
+      complete: best.totalMagicPower >= targetMp,
+    };
+  }, [rows, budgetInput, targetMpInput, planMode]);
 
   const handleLoadProfile = async () => {
     const player = playerName.trim();
@@ -198,11 +313,75 @@ export default function MagicPowerOptimizer() {
         />
       </label>
 
+      <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid var(--glass-border)', borderRadius: 12, padding: '1rem', marginBottom: '1rem' }}>
+        <div className="flex-between" style={{ gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Purchase Plan</h3>
+            <div className="text-muted text-sm">Uses the current missing-accessory list and solves for the best budget or target-MP plan.</div>
+          </div>
+          <select value={planMode} onChange={(event) => setPlanMode(event.target.value)} style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '0.55rem', borderRadius: 8 }}>
+            <option value="budget">Maximize Budget</option>
+            <option value="target">Reach Target MP</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'end', marginBottom: purchasePlan.rows.length > 0 ? '1rem' : 0 }}>
+          {planMode === 'budget' ? (
+            <label style={{ color: 'var(--text-muted)' }}>
+              Budget
+              <input value={budgetInput} onChange={(event) => setBudgetInput(event.target.value)} placeholder="e.g. 50M" style={{ display: 'block', marginTop: 6, width: 180, background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '0.55rem', borderRadius: 8 }} />
+            </label>
+          ) : (
+            <label style={{ color: 'var(--text-muted)' }}>
+              Target MP Gain
+              <input type="number" value={targetMpInput} onChange={(event) => setTargetMpInput(event.target.value)} placeholder="e.g. 100" style={{ display: 'block', marginTop: 6, width: 180, background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '0.55rem', borderRadius: 8 }} />
+            </label>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(120px, 1fr))', gap: '0.75rem', flex: 1, minWidth: 300 }}>
+            <div>
+              <div className="text-muted text-sm">Items</div>
+              <div style={{ fontWeight: 800 }}>{purchasePlan.rows.length.toLocaleString()}</div>
+            </div>
+            <div>
+              <div className="text-muted text-sm">Total Cost</div>
+              <div style={{ fontWeight: 800, color: 'var(--accent-warning)' }}>{formatCoins(purchasePlan.totalCost)}</div>
+            </div>
+            <div>
+              <div className="text-muted text-sm">MP Gain</div>
+              <div style={{ fontWeight: 800, color: 'var(--accent-success)' }}>+{purchasePlan.totalMagicPower.toLocaleString()}</div>
+            </div>
+          </div>
+        </div>
+
+        {planMode === 'budget' && purchasePlan.rows.length > 0 && (
+          <div className="text-muted text-sm" style={{ marginBottom: '0.75rem' }}>
+            Remaining budget: {formatCoins(purchasePlan.remainingBudget)}
+          </div>
+        )}
+        {planMode === 'target' && Number(targetMpInput) > 0 && !purchasePlan.complete && (
+          <div className="text-warning text-sm" style={{ marginBottom: '0.75rem' }}>
+            Current filters do not have enough missing accessories to reach that target.
+          </div>
+        )}
+
+        {purchasePlan.rows.length > 0 && (
+          <div style={{ maxHeight: 260, overflowY: 'auto', borderTop: '1px solid var(--glass-border)', paddingTop: '0.75rem' }}>
+            {purchasePlan.rows.map((row, index) => (
+              <div key={row.id} className="flex-between" style={{ gap: '1rem', padding: '0.45rem 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                <span style={{ fontWeight: 700 }}>{index + 1}. {row.name}</span>
+                <span className="text-muted text-sm">{row.rarity.replace('_', ' ')} · +{row.magicPower} MP · {formatCoins(row.bestCost)} · {formatCoins(row.coinsPerMagicPower)}/MP</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {error && <div className="glass-card text-danger" style={{ marginBottom: '1rem' }}>Error fetching magic power data: {error}</div>}
 
       {meta && (
         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-          Showing {filteredRows.length.toLocaleString()} accessories from {meta.accessoriesScanned?.toLocaleString() || 0} scanned candidates. Excluding {excludedIds.length.toLocaleString()} owned IDs.
+          Showing {filteredRows.length.toLocaleString()} accessories from {meta.accessoriesScanned?.toLocaleString() || 0} scanned candidates. Excluding {(meta.excludedWithPredecessorsCount ?? excludedIds.length).toLocaleString()} owned/predecessor IDs.
         </div>
       )}
 

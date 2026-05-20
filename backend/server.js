@@ -2470,6 +2470,37 @@ function neuItemRarity(item) {
   return match ? match[1].replace(/\s+/g, '_') : '';
 }
 
+function accessoryCatalogById(items) {
+  return new Map(items.map((item) => [item.id.toUpperCase(), item]));
+}
+
+function buildAccessoryPredecessorMap(items) {
+  const byId = accessoryCatalogById(items);
+  const map = new Map();
+  items.forEach((item) => {
+    const predecessors = (item.ingredients || [])
+      .map((ingredient) => String(ingredient.id || '').toUpperCase())
+      .filter((id) => byId.has(id));
+    map.set(item.id.toUpperCase(), predecessors);
+  });
+  return map;
+}
+
+function expandExcludedAccessoryIds(excludedIds, items) {
+  const predecessorMap = buildAccessoryPredecessorMap(items);
+  const expanded = new Set(Array.from(excludedIds).map((id) => String(id || '').toUpperCase()));
+  const visit = (id) => {
+    const predecessors = predecessorMap.get(id) || [];
+    predecessors.forEach((predecessorId) => {
+      if (expanded.has(predecessorId)) return;
+      expanded.add(predecessorId);
+      visit(predecessorId);
+    });
+  };
+  Array.from(expanded).forEach(visit);
+  return expanded;
+}
+
 function isAccessoryLikeItem(item, fileBase) {
   const category = String(item.category || item.item_category || '').toUpperCase();
   const type = String(item.type || '').toUpperCase();
@@ -3017,6 +3048,7 @@ app.get('/api/magic-power', async (req, res) => {
       .split(',')
       .map((id) => id.trim().toUpperCase())
       .filter(Boolean));
+    const expandedExcludedIds = expandExcludedAccessoryIds(excludedIds, items);
 
     const pricedRows = await mapLimit(items, 8, async (item) => {
       const directPricing = await getAccessoryOutputPrice(item.id, lbinData);
@@ -3053,7 +3085,7 @@ app.get('/api/magic-power', async (req, res) => {
 
     const rows = pricedRows
       .filter((row) => row.complete)
-      .filter((row) => !excludedIds.has(row.id.toUpperCase()))
+      .filter((row) => !expandedExcludedIds.has(row.id.toUpperCase()))
       .filter((row) => includeSoulbound || !row.soulbound)
       .filter((row) => rarity === 'ALL' || row.rarity === rarity)
       .filter((row) => row.magicPower >= minMagicPower)
@@ -3073,6 +3105,9 @@ app.get('/api/magic-power', async (req, res) => {
       accessoriesScanned: items.length,
       sourceCandidates: sourceCount,
       lbinAvailable: Object.keys(lbinData).length > 0,
+      excludedOwnedCount: excludedIds.size,
+      excludedWithPredecessorsCount: expandedExcludedIds.size,
+      predecessorExcludedIds: Array.from(expandedExcludedIds).filter((id) => !excludedIds.has(id)),
       magicPowerByRarity: MAGIC_POWER_BY_RARITY,
     });
   } catch (error) {
