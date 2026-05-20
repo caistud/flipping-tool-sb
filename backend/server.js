@@ -75,53 +75,27 @@ async function sendBazaarRows(res) {
   return res.status(503).json({ error: 'No live Hypixel Bazaar data available' });
 }
 
-// --- Admin Settings Routes ---
+// --- Health / configuration status ---
 app.get('/api/health', (req, res) => {
     res.json({
         ok: true,
         service: 'skyblock-flip-backend',
+        hypixelKeyConfigured: Boolean(HYPIXEL_API_KEY),
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
     });
 });
 
 app.get('/api/settings/apikey', (req, res) => {
-    res.json({ apikey: HYPIXEL_API_KEY });
+    res.json({ configured: Boolean(HYPIXEL_API_KEY) });
 });
 
 app.post('/api/settings/apikey', (req, res) => {
-    const newKey = req.body.apikey;
-    if (!newKey) return res.status(400).json({ error: 'No key provided' });
-    
-    HYPIXEL_API_KEY = newKey;
-    process.env.HYPIXEL_API_KEY = newKey;
-
-    try {
-        const envPath = path.join(__dirname, '.env');
-        if (fs.existsSync(envPath)) {
-            let envContext = fs.readFileSync(envPath, 'utf8');
-            if (envContext.includes('HYPIXEL_API_KEY=')) {
-                envContext = envContext.replace(/HYPIXEL_API_KEY=.*/, `HYPIXEL_API_KEY=${newKey}`);
-            } else {
-                envContext += `\nHYPIXEL_API_KEY=${newKey}\n`;
-            }
-            fs.writeFileSync(envPath, envContext, 'utf8');
-        } else {
-            fs.writeFileSync(envPath, `HYPIXEL_API_KEY=${newKey}\n`, 'utf8');
-        }
-        res.json({ success: true, message: 'API Key updated!' });
-    } catch (err) {
-        console.error('Error writing .env:', err);
-        res.status(500).json({ error: 'Failed to write to .env', details: err.message });
-    }
+    res.status(410).json({ error: 'Runtime API key updates are disabled. Set HYPIXEL_API_KEY in the backend environment.' });
 });
 
 app.post('/api/settings/restart', (req, res) => {
-    res.json({ success: true, message: 'Rebooting...' });
-    setTimeout(() => {
-        console.log("Remote restart triggered from UI. Exiting process.");
-        process.exit(1);
-    }, 500);
+    res.status(410).json({ error: 'Remote restart is disabled for deployed environments.' });
 });
 
 // --- Custom Recipe CRUD ---
@@ -619,37 +593,6 @@ async function refreshRawBazaarCache(force = false) {
 
   return rawBazaarRefreshPromise;
 }
-
-// --- SETTINGS ENDPOINTS ---
-app.get('/api/settings/apikey', (req, res) => {
-    res.json({ apikey: process.env.HYPIXEL_API_KEY || '' });
-});
-
-app.post('/api/settings/apikey', (req, res) => {
-    const { apikey } = req.body;
-    if (apikey !== undefined) {
-        process.env.HYPIXEL_API_KEY = apikey;
-        const envPath = require('path').join(__dirname, '.env');
-        try {
-            let envContent = '';
-            const fs = require('fs');
-            if (fs.existsSync(envPath)) {
-                envContent = fs.readFileSync(envPath, 'utf8');
-                envContent = envContent.replace(/^HYPIXEL_API_KEY=.*$/m, `HYPIXEL_API_KEY=${apikey}`);
-                if (!envContent.includes('HYPIXEL_API_KEY=')) envContent += `\nHYPIXEL_API_KEY=${apikey}`;
-            } else {
-                envContent = `HYPIXEL_API_KEY=${apikey}`;
-            }
-            fs.writeFileSync(envPath, envContent);
-        } catch(e) {}
-    }
-    res.json({ success: true });
-});
-
-app.post('/api/settings/restart', (req, res) => {
-    res.json({ success: true });
-    setTimeout(() => process.exit(0), 1000);
-});
 
 app.get('/api/bazaar', async (req, res) => {
   try {
@@ -2731,7 +2674,10 @@ function collectItemIdsFromNbt(value, ids = []) {
   }
   if (typeof value !== 'object') return ids;
 
-  const extraId = value.tag?.ExtraAttributes?.id || value.ExtraAttributes?.id;
+  const extraId = value.tag?.ExtraAttributes?.id
+    || value.ExtraAttributes?.id
+    || value.tag?.value?.ExtraAttributes?.value?.id?.value
+    || value.value?.tag?.value?.ExtraAttributes?.value?.id?.value;
   if (typeof extraId === 'string' && extraId.trim()) ids.push(extraId.trim().toUpperCase());
 
   Object.values(value).forEach((child) => collectItemIdsFromNbt(child, ids));
@@ -2780,16 +2726,23 @@ app.get('/api/player-accessories', async (req, res) => {
     const blobs = collectInventoryBlobs(member);
     const foundIds = new Set();
     const parsedSources = [];
+    const allParsedIds = new Set();
+    let parsedBlobCount = 0;
 
     for (const blob of blobs) {
       const parsed = await parseInventoryBlob(blob.data);
       if (!parsed) continue;
-      const ids = collectItemIdsFromNbt(parsed)
-        .filter((id) => accessoryIds.has(id));
-      if (ids.length > 0) {
-        parsedSources.push({ path: blob.path, count: ids.length });
-        ids.forEach((id) => foundIds.add(id));
-      }
+      parsedBlobCount += 1;
+      const allIds = collectItemIdsFromNbt(parsed);
+      allIds.forEach((id) => allParsedIds.add(id));
+      const ids = allIds.filter((id) => accessoryIds.has(id));
+      if (ids.length > 0) ids.forEach((id) => foundIds.add(id));
+      parsedSources.push({
+        path: blob.path,
+        itemIdCount: allIds.length,
+        accessoryIdCount: ids.length,
+        sampleItemIds: allIds.slice(0, 8),
+      });
     }
 
     const rows = Array.from(foundIds)
@@ -2817,6 +2770,13 @@ app.get('/api/player-accessories', async (req, res) => {
         profileName: entry.cute_name,
         selected: Boolean(entry.selected),
       })),
+      diagnostics: {
+        inventoryBlobCount: blobs.length,
+        parsedBlobCount,
+        parsedItemIdCount: allParsedIds.size,
+        sampleParsedItemIds: Array.from(allParsedIds).slice(0, 20),
+        inventoryApiLikelyDisabled: blobs.length === 0 || parsedBlobCount === 0,
+      },
       parsedSources,
     });
   } catch (error) {
