@@ -2527,10 +2527,11 @@ function isMagicPowerAccessoryItem(item, fileBase) {
   const id = String(item.internalname || fileBase || '').toUpperCase();
 
   if (category.includes('EQUIPMENT') || type.includes('EQUIPMENT')) return false;
-  if (/\b(NECKLACE|CLOAK|BELT|BRACELET|GLOVES)\b/.test(lore) && !lore.includes('ACCESSORY')) return false;
+  if (/\b(NECKLACE|CLOAK|BELT|BRACELET|GLOVES)\b/.test(lore)) return false;
+  if (/\b(NECKLACE|CLOAK|BELT|BRACELET|GLOVES)\b/.test(display)) return false;
+  if (/\b(NECKLACE|CLOAK|BELT|BRACELET|GLOVES)\b/.test(id)) return false;
 
-  if (category.includes('ACCESSORY') || type.includes('ACCESSORY') || lore.includes('ACCESSORY')) return true;
-  return MAGIC_POWER_FILE_HINTS.some((hint) => id.includes(hint) || display.includes(hint.replace(/_/g, ' ')));
+  return category.includes('ACCESSORY') || type.includes('ACCESSORY') || lore.includes('ACCESSORY');
 }
 
 function parseNeuIngredient(raw) {
