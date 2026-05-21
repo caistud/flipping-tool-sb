@@ -3,6 +3,14 @@ import { RefreshCw } from 'lucide-react';
 import { fetchMagicPower, fetchPlayerAccessories } from '../services/api';
 
 const rarityOptions = ['ALL', 'COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC', 'SPECIAL', 'VERY_SPECIAL'];
+const acquisitionOptions = [
+  { value: 'all', label: 'All Priced' },
+  { value: 'best-craft', label: 'Best Route: Craft' },
+  { value: 'best-auction', label: 'Best Route: Auction' },
+  { value: 'craftable', label: 'Craftable' },
+  { value: 'auction', label: 'Auction House' },
+  { value: 'obtainable', label: 'Direct Obtainable' },
+];
 
 const formatCoins = (num) => {
   const value = Number(num || 0);
@@ -16,6 +24,25 @@ const parseExcludedIds = (raw) => raw
   .split(/[\s,]+/)
   .map((value) => value.trim().toUpperCase())
   .filter(Boolean);
+
+const matchesAcquisitionFilter = (row, filter) => {
+  const hasCraft = Number(row.craftCost || 0) > 0;
+  const hasDirect = Number(row.directCost || 0) > 0;
+  switch (filter) {
+    case 'best-craft':
+      return row.bestMethod === 'craft';
+    case 'best-auction':
+      return row.bestMethod === 'buy';
+    case 'craftable':
+      return hasCraft;
+    case 'auction':
+      return hasDirect;
+    case 'obtainable':
+      return hasDirect && !hasCraft;
+    default:
+      return true;
+  }
+};
 
 const betterBudgetPlan = (candidate, current) => {
   if (!current) return candidate;
@@ -100,6 +127,7 @@ export default function MagicPowerOptimizer() {
   const [includeCraft, setIncludeCraft] = useState(true);
   const [includeSoulbound, setIncludeSoulbound] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [acquisitionFilter, setAcquisitionFilter] = useState('all');
   const [planMode, setPlanMode] = useState('budget');
   const [budgetInput, setBudgetInput] = useState('');
   const [targetMpInput, setTargetMpInput] = useState('');
@@ -152,15 +180,19 @@ export default function MagicPowerOptimizer() {
     return () => { active = false; };
   }, [rarity, limit, maxCoinsPerMp, includeCraft, includeSoulbound, excludedIds.join(','), refreshTick]);
 
+  const acquisitionRows = useMemo(() => (
+    rows.filter((row) => matchesAcquisitionFilter(row, acquisitionFilter))
+  ), [rows, acquisitionFilter]);
+
   const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return rows;
-    return rows.filter((row) => (
+    if (!query) return acquisitionRows;
+    return acquisitionRows.filter((row) => (
       row.name.toLowerCase().includes(query)
       || row.id.toLowerCase().includes(query)
       || row.rarity.toLowerCase().includes(query)
     ));
-  }, [rows, searchQuery]);
+  }, [acquisitionRows, searchQuery]);
 
   const parseCoinInput = (raw) => {
     const value = String(raw || '').trim().toLowerCase().replace(/,/g, '');
@@ -172,7 +204,7 @@ export default function MagicPowerOptimizer() {
   };
 
   const purchasePlan = useMemo(() => {
-    const candidates = rows
+    const candidates = acquisitionRows
       .filter((row) => Number(row.bestCost) > 0 && Number(row.magicPower) > 0)
       .sort((a, b) => a.coinsPerMagicPower - b.coinsPerMagicPower || a.bestCost - b.bestCost);
 
@@ -200,7 +232,7 @@ export default function MagicPowerOptimizer() {
       remainingBudget: 0,
       complete: best.totalMagicPower >= targetMp,
     };
-  }, [rows, budgetInput, targetMpInput, planMode]);
+  }, [acquisitionRows, budgetInput, targetMpInput, planMode]);
 
   const handleLoadProfile = async () => {
     const player = playerName.trim();
@@ -267,6 +299,12 @@ export default function MagicPowerOptimizer() {
         <label style={{ color: 'var(--text-muted)' }}>
           Search
           <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Accessory name or id" style={{ display: 'block', marginTop: 6, width: '100%', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '0.55rem', borderRadius: 8 }} />
+        </label>
+        <label style={{ color: 'var(--text-muted)' }}>
+          Get Method
+          <select value={acquisitionFilter} onChange={(event) => setAcquisitionFilter(event.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '0.55rem', borderRadius: 8 }}>
+            {acquisitionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
         </label>
         <label style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={includeCraft} onChange={(event) => setIncludeCraft(event.target.checked)} />
@@ -382,6 +420,7 @@ export default function MagicPowerOptimizer() {
       {meta && (
         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
           Showing {filteredRows.length.toLocaleString()} accessories from {meta.accessoriesScanned?.toLocaleString() || 0} scanned candidates. Excluding {(meta.excludedWithPredecessorsCount ?? excludedIds.length).toLocaleString()} owned/predecessor IDs.
+          {acquisitionFilter !== 'all' && ` Method filter: ${acquisitionOptions.find((option) => option.value === acquisitionFilter)?.label}.`}
         </div>
       )}
 
