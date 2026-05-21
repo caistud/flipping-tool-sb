@@ -2446,6 +2446,13 @@ const ACCESSORY_FILE_HINTS = [
   'SACK', 'ENRICHMENT', 'HEGEMONY', 'JACOBUS', 'BEASTMASTER', 'BAT_PERSON'
 ];
 
+const MAGIC_POWER_FILE_HINTS = [
+  'ACCESSORY', 'TALISMAN', 'RING', 'ARTIFACT', 'RELIC', 'CHARM',
+  'BADGE', 'SEAL', 'ORB', 'SCARF', 'CREST', 'COMPASS',
+  'PERSONAL_COMPACTOR', 'DELETOR', 'ENRICHMENT', 'HEGEMONY',
+  'JACOBUS', 'BEASTMASTER', 'BAT_PERSON',
+];
+
 function cleanNeuName(name) {
   return String(name || '')
     .replace(/§./g, '')
@@ -2510,6 +2517,20 @@ function isAccessoryLikeItem(item, fileBase) {
   if (category.includes('ACCESSORY') || type.includes('ACCESSORY')) return true;
   if (lore.includes('ACCESSORY')) return true;
   return ACCESSORY_FILE_HINTS.some((hint) => id.includes(hint) || display.includes(hint.replace(/_/g, ' ')));
+}
+
+function isMagicPowerAccessoryItem(item, fileBase) {
+  const category = String(item.category || item.item_category || '').toUpperCase();
+  const type = String(item.type || '').toUpperCase();
+  const display = cleanNeuName(item.displayname || item.display_name || item.name).toUpperCase();
+  const lore = Array.isArray(item.lore) ? item.lore.map(cleanNeuName).join(' ').toUpperCase() : '';
+  const id = String(item.internalname || fileBase || '').toUpperCase();
+
+  if (category.includes('EQUIPMENT') || type.includes('EQUIPMENT')) return false;
+  if (/\b(NECKLACE|CLOAK|BELT|BRACELET|GLOVES)\b/.test(lore) && !lore.includes('ACCESSORY')) return false;
+
+  if (category.includes('ACCESSORY') || type.includes('ACCESSORY') || lore.includes('ACCESSORY')) return true;
+  return MAGIC_POWER_FILE_HINTS.some((hint) => id.includes(hint) || display.includes(hint.replace(/_/g, ' ')));
 }
 
 function parseNeuIngredient(raw) {
@@ -2619,7 +2640,7 @@ async function loadAccessoryCatalog() {
     .filter((entry) => entry.type === 'blob' && /^items\/.+\.json$/i.test(entry.path || ''))
     .filter((entry) => {
       const base = path.basename(entry.path, '.json').toUpperCase();
-      return ACCESSORY_FILE_HINTS.some((hint) => base.includes(hint));
+      return MAGIC_POWER_FILE_HINTS.some((hint) => base.includes(hint));
     })
     .slice(0, 900);
 
@@ -2628,7 +2649,7 @@ async function loadAccessoryCatalog() {
     const item = await fetchJsonOrNull(`${NEU_RAW_ITEM_URL}/${encodeURIComponent(fileName)}`);
     if (!item) return null;
     const internalId = item.internalname || path.basename(fileName, '.json');
-    if (!isAccessoryLikeItem(item, internalId)) return null;
+    if (!isMagicPowerAccessoryItem(item, internalId)) return null;
     const rarity = neuItemRarity(item);
     const magicPower = MAGIC_POWER_BY_RARITY[rarity] || 0;
     if (magicPower <= 0) return null;
