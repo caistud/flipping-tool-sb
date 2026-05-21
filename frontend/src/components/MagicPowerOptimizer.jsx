@@ -132,6 +132,9 @@ export default function MagicPowerOptimizer() {
   const [budgetInput, setBudgetInput] = useState('');
   const [targetMpInput, setTargetMpInput] = useState('');
   const [excludedText, setExcludedText] = useState(() => localStorage.getItem('skyblock_mp_excluded_ids') || '');
+  const [skycryptMissingIds, setSkycryptMissingIds] = useState(() => (
+    localStorage.getItem('skyblock_mp_skycrypt_missing_ids') || ''
+  ));
   const [playerName, setPlayerName] = useState(() => localStorage.getItem('skyblock_mp_player') || '');
   const [profileName, setProfileName] = useState(() => localStorage.getItem('skyblock_mp_profile') || '');
   const [profileLoadState, setProfileLoadState] = useState({ loading: false, message: '', error: '' });
@@ -139,10 +142,15 @@ export default function MagicPowerOptimizer() {
   const [refreshTick, setRefreshTick] = useState(0);
 
   const excludedIds = useMemo(() => parseExcludedIds(excludedText), [excludedText]);
+  const missingIds = useMemo(() => parseExcludedIds(skycryptMissingIds), [skycryptMissingIds]);
 
   useEffect(() => {
     localStorage.setItem('skyblock_mp_excluded_ids', excludedText);
   }, [excludedText]);
+
+  useEffect(() => {
+    localStorage.setItem('skyblock_mp_skycrypt_missing_ids', skycryptMissingIds);
+  }, [skycryptMissingIds]);
 
   useEffect(() => {
     localStorage.setItem('skyblock_mp_player', playerName);
@@ -165,6 +173,7 @@ export default function MagicPowerOptimizer() {
           includeCraft,
           includeSoulbound,
           excludeIds: excludedIds.join(','),
+          includeIds: missingIds.join(','),
         });
         if (!active) return;
         setRows(data.rows || []);
@@ -178,7 +187,7 @@ export default function MagicPowerOptimizer() {
 
     load();
     return () => { active = false; };
-  }, [rarity, limit, maxCoinsPerMp, includeCraft, includeSoulbound, excludedIds.join(','), refreshTick]);
+  }, [rarity, limit, maxCoinsPerMp, includeCraft, includeSoulbound, excludedIds.join(','), missingIds.join(','), refreshTick]);
 
   const acquisitionRows = useMemo(() => (
     rows.filter((row) => matchesAcquisitionFilter(row, acquisitionFilter))
@@ -248,11 +257,13 @@ export default function MagicPowerOptimizer() {
         profile: profileName.trim(),
       });
       const ids = data.accessoryIds || [];
+      const skycryptIds = data.skycryptMissingIds || [];
       setExcludedText(ids.join('\n'));
+      setSkycryptMissingIds(skycryptIds.join('\n'));
       setRefreshTick((value) => value + 1);
       setProfileLoadState({
         loading: false,
-        message: `Loaded ${ids.length.toLocaleString()} accessories from ${data.profileName || 'selected profile'}.`,
+        message: `Loaded ${ids.length.toLocaleString()} owned accessories and ${skycryptIds.length.toLocaleString()} SkyCrypt missing accessories from ${data.profileName || 'selected profile'}.`,
         error: '',
       });
     } catch (err) {
@@ -338,6 +349,22 @@ export default function MagicPowerOptimizer() {
             {profileLoadState.error || profileLoadState.message}
           </div>
         )}
+        {missingIds.length > 0 && (
+          <div className="text-muted text-sm" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span>SkyCrypt missing filter active: {missingIds.length.toLocaleString()} accessories.</span>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setSkycryptMissingIds('');
+                setRefreshTick((value) => value + 1);
+              }}
+              style={{ padding: '0.35rem 0.65rem' }}
+            >
+              Show all missing by owned IDs
+            </button>
+          </div>
+        )}
       </div>
 
       <label style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '1rem' }}>
@@ -420,6 +447,7 @@ export default function MagicPowerOptimizer() {
       {meta && (
         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
           Showing {filteredRows.length.toLocaleString()} accessories from {meta.accessoriesScanned?.toLocaleString() || 0} scanned candidates. Excluding {(meta.excludedWithPredecessorsCount ?? excludedIds.length).toLocaleString()} owned/predecessor IDs.
+          {meta.skycryptMissingFilterCount > 0 && ` SkyCrypt missing filter: ${meta.skycryptMissingFilterCount.toLocaleString()} IDs.`}
           {acquisitionFilter !== 'all' && ` Method filter: ${acquisitionOptions.find((option) => option.value === acquisitionFilter)?.label}.`}
         </div>
       )}

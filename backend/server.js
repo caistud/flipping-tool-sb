@@ -2737,6 +2737,119 @@ function collectItemIdsFromNbt(value, ids = []) {
   return ids;
 }
 
+function extractSkyblockIdCandidates(value) {
+  if (!value || typeof value !== 'object') return [];
+  return [
+    value.id,
+    value.itemId,
+    value.item_id,
+    value.skyblockId,
+    value.skyblock_id,
+    value.internalName,
+    value.internalname,
+    value.internal_name,
+    value.tag?.ExtraAttributes?.id,
+    value.extraAttributes?.id,
+    value.extra_attributes?.id,
+    value.item?.id,
+    value.item?.itemId,
+    value.item?.internalName,
+    value.item?.tag?.ExtraAttributes?.id,
+  ]
+    .filter((id) => typeof id === 'string')
+    .map((id) => id.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function collectKnownSkyCryptAccessoryIds(value, knownIds, found = new Set(), skipKeyPattern = null) {
+  if (!value) return found;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toUpperCase();
+    if (knownIds.has(normalized)) found.add(normalized);
+    return found;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectKnownSkyCryptAccessoryIds(entry, knownIds, found, skipKeyPattern));
+    return found;
+  }
+  if (typeof value !== 'object') return found;
+
+  extractSkyblockIdCandidates(value).forEach((id) => {
+    if (knownIds.has(id)) found.add(id);
+  });
+  Object.entries(value).forEach(([key, child]) => {
+    if (skipKeyPattern && skipKeyPattern.test(String(key))) return;
+    collectKnownSkyCryptAccessoryIds(child, knownIds, found, skipKeyPattern);
+  });
+  return found;
+}
+
+function skyCryptSections(data, wantedKeys) {
+  const sections = [];
+  const visit = (value, pathParts = []) => {
+    if (!value || typeof value !== 'object') return;
+    Object.entries(value).forEach(([key, child]) => {
+      const normalizedKey = key.toLowerCase().replace(/[_\s-]/g, '');
+      if (wantedKeys.some((wanted) => normalizedKey.includes(wanted))) {
+        sections.push({ path: pathParts.concat(key).join('.'), value: child });
+      }
+      if (child && typeof child === 'object') visit(child, pathParts.concat(key));
+    });
+  };
+  visit(data);
+  return sections;
+}
+
+async function fetchSkyCryptAccessorySnapshot(uuid, profileId, knownAccessoryIds) {
+  if (!uuid || !profileId) return null;
+  try {
+    const response = await axios.get(
+      `https://sky.shiiyu.moe/api/accessories/${encodeURIComponent(uuid)}/${encodeURIComponent(profileId)}`,
+      {
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'skyblock-flips-local-tool',
+          'Accept': 'application/json',
+        },
+      },
+    );
+    const data = response.data || {};
+    const ownedSections = [
+      ...skyCryptSections(data, ['accessories', 'talismans', 'accessorybag']),
+      { path: 'root', value: data.accessories || data.talismans || data.accessoryBag },
+    ].filter((section) => section.value);
+    const missingSections = skyCryptSections(data, ['missing', 'missingaccessories', 'upgrades']);
+
+    const ownedIds = new Set();
+    ownedSections
+      .filter((section) => !/missing|upgrade/i.test(section.path))
+      .forEach((section) => collectKnownSkyCryptAccessoryIds(section.value, knownAccessoryIds, ownedIds, /missing|upgrade/i));
+
+    const missingIds = new Set();
+    missingSections.forEach((section) => collectKnownSkyCryptAccessoryIds(section.value, knownAccessoryIds, missingIds));
+
+    return {
+      source: 'skycrypt',
+      ownedIds,
+      missingIds,
+      magicalPower: data.magicalPower || data.magicPower || data.magical_power || null,
+      sectionPaths: {
+        owned: ownedSections.map((section) => section.path),
+        missing: missingSections.map((section) => section.path),
+      },
+    };
+  } catch (error) {
+    return {
+      source: 'skycrypt',
+      error: error.response?.data?.error || error.response?.data?.message || error.message,
+      ownedIds: new Set(),
+      missingIds: new Set(),
+      magicalPower: null,
+      sectionPaths: { owned: [], missing: [] },
+    };
+  }
+}
+
 function selectSkyblockProfile(profiles, profileName, uuid) {
   const list = Array.isArray(profiles) ? profiles : [];
   if (profileName) {
@@ -2776,6 +2889,7 @@ app.get('/api/player-accessories', async (req, res) => {
 
     const { items: accessoryCatalog } = await loadAccessoryCatalog();
     const accessoryIds = new Set(accessoryCatalog.map((item) => item.id.toUpperCase()));
+    const skyCrypt = await fetchSkyCryptAccessorySnapshot(uuid, profile.profile_id, accessoryIds);
     const blobs = collectInventoryBlobs(member);
     const foundIds = new Set();
     const parsedSources = [];
@@ -2798,6 +2912,10 @@ app.get('/api/player-accessories', async (req, res) => {
       });
     }
 
+    if (skyCrypt?.ownedIds?.size > 0) {
+      skyCrypt.ownedIds.forEach((id) => foundIds.add(id));
+    }
+
     const rows = Array.from(foundIds)
       .map((id) => {
         const item = accessoryCatalog.find((entry) => entry.id.toUpperCase() === id);
@@ -2818,6 +2936,10 @@ app.get('/api/player-accessories', async (req, res) => {
       accessoryIds: rows.map((row) => row.id),
       rows,
       count: rows.length,
+      source: skyCrypt?.ownedIds?.size > 0 ? 'skycrypt+hypixel' : 'hypixel',
+      skycryptMissingIds: Array.from(skyCrypt?.missingIds || []),
+      skycryptMissingCount: skyCrypt?.missingIds?.size || 0,
+      skycryptMagicalPower: skyCrypt?.magicalPower || null,
       availableProfiles: (response.data.profiles || []).map((entry) => ({
         profileId: entry.profile_id,
         profileName: entry.cute_name,
@@ -2829,6 +2951,13 @@ app.get('/api/player-accessories', async (req, res) => {
         parsedItemIdCount: allParsedIds.size,
         sampleParsedItemIds: Array.from(allParsedIds).slice(0, 20),
         inventoryApiLikelyDisabled: blobs.length === 0 || parsedBlobCount === 0,
+        skycrypt: skyCrypt ? {
+          error: skyCrypt.error || null,
+          ownedCount: skyCrypt.ownedIds?.size || 0,
+          missingCount: skyCrypt.missingIds?.size || 0,
+          magicalPower: skyCrypt.magicalPower || null,
+          sectionPaths: skyCrypt.sectionPaths,
+        } : null,
       },
       parsedSources,
     });
@@ -3070,6 +3199,10 @@ app.get('/api/magic-power', async (req, res) => {
       .split(',')
       .map((id) => id.trim().toUpperCase())
       .filter(Boolean));
+    const includedIds = new Set(String(req.query.includeIds || '')
+      .split(',')
+      .map((id) => id.trim().toUpperCase())
+      .filter(Boolean));
     const expandedExcludedIds = expandExcludedAccessoryIds(excludedIds, items);
 
     const pricedRows = await mapLimit(items, 8, async (item) => {
@@ -3107,6 +3240,7 @@ app.get('/api/magic-power', async (req, res) => {
 
     const rows = pricedRows
       .filter((row) => row.complete)
+      .filter((row) => includedIds.size === 0 || includedIds.has(row.id.toUpperCase()))
       .filter((row) => !expandedExcludedIds.has(row.id.toUpperCase()))
       .filter((row) => includeSoulbound || !row.soulbound)
       .filter((row) => rarity === 'ALL' || row.rarity === rarity)
@@ -3129,6 +3263,7 @@ app.get('/api/magic-power', async (req, res) => {
       lbinAvailable: Object.keys(lbinData).length > 0,
       excludedOwnedCount: excludedIds.size,
       excludedWithPredecessorsCount: expandedExcludedIds.size,
+      skycryptMissingFilterCount: includedIds.size,
       predecessorExcludedIds: Array.from(expandedExcludedIds).filter((id) => !excludedIds.has(id)),
       magicPowerByRarity: MAGIC_POWER_BY_RARITY,
     });
