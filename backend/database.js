@@ -5,6 +5,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 const DB_TIMEOUT_MS = 10000;
+const HUNTING_GUIDES_TABLE = 'hunting_guides';
 
 const withTimeout = (promise, label) => Promise.race([
   promise,
@@ -13,6 +14,10 @@ const withTimeout = (promise, label) => Promise.race([
 
 module.exports = {
   supabase,
+
+  isConfigured() {
+    return Boolean(supabaseUrl && supabaseKey);
+  },
   
   // Bazaar queries
   async updateBazaar(products) {
@@ -153,5 +158,59 @@ module.exports = {
     if (rows.length === 0) return;
     const { error } = await withTimeout(supabase.from('items').upsert(rows), 'updateItems');
     if (error) console.error("Error updating items:", error);
+  },
+
+  async getHuntingGuides() {
+    const { data, error } = await withTimeout(
+      supabase
+        .from(HUNTING_GUIDES_TABLE)
+        .select('id, data, created_at, updated_at')
+        .order('updated_at', { ascending: false }),
+      'getHuntingGuides'
+    );
+    if (error) throw error;
+    return (data || []).map((row) => ({
+      ...(row.data || {}),
+      id: row.id,
+      createdAt: row.data?.createdAt ?? row.created_at ?? 0,
+      updatedAt: row.data?.updatedAt ?? row.updated_at ?? 0,
+    }));
+  },
+
+  async upsertHuntingGuide(guide) {
+    const row = {
+      id: guide.id,
+      data: guide,
+      created_at: Number(guide.createdAt || Date.now()),
+      updated_at: Number(guide.updatedAt || Date.now()),
+    };
+    const { error } = await withTimeout(
+      supabase.from(HUNTING_GUIDES_TABLE).upsert(row, { onConflict: 'id' }),
+      'upsertHuntingGuide'
+    );
+    if (error) throw error;
+  },
+
+  async upsertHuntingGuides(guides) {
+    const rows = guides.map((guide) => ({
+      id: guide.id,
+      data: guide,
+      created_at: Number(guide.createdAt || Date.now()),
+      updated_at: Number(guide.updatedAt || Date.now()),
+    }));
+    if (rows.length === 0) return;
+    const { error } = await withTimeout(
+      supabase.from(HUNTING_GUIDES_TABLE).upsert(rows, { onConflict: 'id' }),
+      'upsertHuntingGuides'
+    );
+    if (error) throw error;
+  },
+
+  async deleteHuntingGuide(id) {
+    const { error } = await withTimeout(
+      supabase.from(HUNTING_GUIDES_TABLE).delete().eq('id', id),
+      'deleteHuntingGuide'
+    );
+    if (error) throw error;
   }
 };

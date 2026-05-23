@@ -11,6 +11,10 @@ services:
         value: 24.14.1
       - key: ENABLE_SUPABASE_MARKET_SYNC
         value: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
       - key: HYPIXEL_API_KEY
         sync: false
       - key: SKYCOFL_API_KEY

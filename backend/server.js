@@ -33,6 +33,7 @@ const ENABLE_SUPABASE_MARKET_SYNC = process.env.ENABLE_SUPABASE_MARKET_SYNC === 
 const POLL_BAZAAR_MS = Math.max(60000, Number(process.env.POLL_BAZAAR_MS || 120000));
 const POLL_AUCTIONS_MS = Math.max(60000, Number(process.env.POLL_AUCTIONS_MS || 180000));
 const POLL_ITEMS_MS = Math.max(3600000, Number(process.env.POLL_ITEMS_MS || 21600000));
+const HYPIXEL_SKYBLOCK_ITEMS_URL = 'https://api.hypixel.net/v2/resources/skyblock/items';
 const NEU_REPO_TREE_URL = 'https://api.github.com/repos/NotEnoughUpdates/NotEnoughUpdates-REPO/git/trees/master?recursive=1';
 const NEU_RAW_ITEM_URL = 'https://raw.githubusercontent.com/NotEnoughUpdates/NotEnoughUpdates-REPO/master/items';
 const ACCESSORY_RECIPE_CACHE_MS = 6 * 60 * 60 * 1000;
@@ -112,7 +113,7 @@ const writeCustomRecipes = (recipes) => {
     fs.writeFileSync(CUSTOM_RECIPES_PATH, JSON.stringify(recipes, null, 2), 'utf8');
 };
 
-const readHuntingGuides = () => {
+const readHuntingGuidesLocal = () => {
     try {
         if (!fs.existsSync(HUNTING_GUIDES_PATH)) return [];
         const parsed = JSON.parse(fs.readFileSync(HUNTING_GUIDES_PATH, 'utf8'));
@@ -123,8 +124,72 @@ const readHuntingGuides = () => {
     }
 };
 
-const writeHuntingGuides = (guides) => {
+const writeHuntingGuidesLocal = (guides) => {
     fs.writeFileSync(HUNTING_GUIDES_PATH, JSON.stringify(guides, null, 2), 'utf8');
+};
+
+const shouldUseSupabaseGuides = () => {
+    try {
+        return getDb().isConfigured();
+    } catch {
+        return false;
+    }
+};
+
+const readHuntingGuides = async () => {
+    if (!shouldUseSupabaseGuides()) return readHuntingGuidesLocal();
+    try {
+        const guides = await getDb().getHuntingGuides();
+        if (guides.length > 0) return guides;
+
+        const localGuides = readHuntingGuidesLocal();
+        if (localGuides.length > 0) {
+            await getDb().upsertHuntingGuides(localGuides);
+            return localGuides;
+        }
+        return [];
+    } catch (error) {
+        console.error('Failed to read hunting guides from Supabase, using local fallback:', error.message);
+        return readHuntingGuidesLocal();
+    }
+};
+
+const createHuntingGuide = async (guide) => {
+    if (shouldUseSupabaseGuides()) {
+        try {
+            await getDb().upsertHuntingGuide(guide);
+            return;
+        } catch (error) {
+            console.error('Failed to save hunting guide to Supabase, writing local fallback:', error.message);
+        }
+    }
+    const guides = readHuntingGuidesLocal().filter((item) => item.id !== guide.id);
+    guides.push(guide);
+    writeHuntingGuidesLocal(guides);
+};
+
+const saveHuntingGuides = async (guides) => {
+    if (shouldUseSupabaseGuides()) {
+        try {
+            await getDb().upsertHuntingGuides(guides);
+            return;
+        } catch (error) {
+            console.error('Failed to save hunting guides to Supabase, writing local fallback:', error.message);
+        }
+    }
+    writeHuntingGuidesLocal(guides);
+};
+
+const deleteHuntingGuideById = async (id, remainingGuides) => {
+    if (shouldUseSupabaseGuides()) {
+        try {
+            await getDb().deleteHuntingGuide(id);
+            return;
+        } catch (error) {
+            console.error('Failed to delete hunting guide from Supabase, writing local fallback:', error.message);
+        }
+    }
+    writeHuntingGuidesLocal(remainingGuides);
 };
 
 const defaultInvestmentStrategies = () => ([
@@ -220,7 +285,7 @@ app.get('/api/hunting-guides', async (req, res) => {
     }
 
     const names = shardNameByInternalId();
-    const guides = readHuntingGuides()
+    const guides = (await readHuntingGuides())
         .map((guide, index) => {
             const quickStatus = rawBazaarCache[guide.shardId]?.quick_status || {};
             const instaSellPrice = Number(quickStatus.sellPrice || 0);
@@ -248,7 +313,7 @@ app.get('/api/hunting-guides', async (req, res) => {
     res.json(guides);
 });
 
-app.post('/api/hunting-guides', (req, res) => {
+app.post('/api/hunting-guides', async (req, res) => {
     const { shardId, shardName, location, setup, steps, notes, source, tags } = req.body || {};
     if (!shardId) return res.status(400).json({ error: 'Missing shardId' });
 
@@ -271,14 +336,13 @@ app.post('/api/hunting-guides', (req, res) => {
         updatedAt: now,
     };
 
-    const guides = readHuntingGuides();
-    guides.push(guide);
-    writeHuntingGuides(guides);
+    await createHuntingGuide(guide);
+    const guides = await readHuntingGuides();
     res.json({ success: true, guide, total: guides.length });
 });
 
-app.put('/api/hunting-guides/:id', (req, res) => {
-    const guides = readHuntingGuides();
+app.put('/api/hunting-guides/:id', async (req, res) => {
+    const guides = await readHuntingGuides();
     const idx = guides.findIndex((guide) => guide.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Guide not found' });
 
@@ -301,15 +365,15 @@ app.put('/api/hunting-guides/:id', (req, res) => {
     };
 
     guides[idx] = next;
-    writeHuntingGuides(guides);
+    await createHuntingGuide(next);
     res.json({ success: true, guide: next });
 });
 
-app.delete('/api/hunting-guides/:id', (req, res) => {
-    const guides = readHuntingGuides();
+app.delete('/api/hunting-guides/:id', async (req, res) => {
+    const guides = await readHuntingGuides();
     const next = guides.filter((guide) => guide.id !== req.params.id);
     if (next.length === guides.length) return res.status(404).json({ error: 'Guide not found' });
-    writeHuntingGuides(next);
+    await deleteHuntingGuideById(req.params.id, next);
     res.json({ success: true, total: next.length });
 });
 
@@ -375,7 +439,7 @@ app.get('/api/hunt-fuse', async (req, res) => {
         const outMode = req.query.outMode || 'insta-sell';
         const inMode = req.query.inMode || 'insta-buy';
         const minProfit = Number(req.query.minProfit || 0);
-        const allGuides = readHuntingGuides();
+        const allGuides = await readHuntingGuides();
         const selectedShardIds = String(req.query.huntedShardIds || '')
             .split(',')
             .map((id) => id.trim())
@@ -2412,6 +2476,7 @@ let moulberryCache = {};
 let moulberryLastFetch = 0;
 let accessoryRecipeCache = { time: 0, recipes: [], sourceCount: 0 };
 let accessoryCatalogCache = { time: 0, items: [], sourceCount: 0 };
+let hypixelItemResourceCache = { time: 0, byId: new Map(), sourceCount: 0 };
 let forgeRecipeCache = { time: 0, recipes: [], sourceCount: 0 };
 const accessoryOutputPriceCache = new Map();
 
@@ -2519,7 +2584,17 @@ function isAccessoryLikeItem(item, fileBase) {
   return ACCESSORY_FILE_HINTS.some((hint) => id.includes(hint) || display.includes(hint.replace(/_/g, ' ')));
 }
 
-function isMagicPowerAccessoryItem(item, fileBase) {
+function officialSkyBlockItemCategory(item) {
+  return String(item?.category || '').trim().toUpperCase();
+}
+
+function isOfficialMagicPowerAccessory(item) {
+  return officialSkyBlockItemCategory(item) === 'ACCESSORY';
+}
+
+function isMagicPowerAccessoryItem(item, fileBase, officialItem = null) {
+  if (officialItem) return isOfficialMagicPowerAccessory(officialItem);
+
   const category = String(item.category || item.item_category || '').toUpperCase();
   const type = String(item.type || '').toUpperCase();
   const display = cleanNeuName(item.displayname || item.display_name || item.name).toUpperCase();
@@ -2566,6 +2641,23 @@ function parseForgeIngredients(inputs) {
     counts[parsed.id] = (counts[parsed.id] || 0) + parsed.qty;
   });
   return Object.entries(counts).map(([id, qty]) => ({ id, qty }));
+}
+
+async function loadHypixelSkyBlockItems() {
+  const fresh = hypixelItemResourceCache.byId.size > 0 && Date.now() - hypixelItemResourceCache.time < ACCESSORY_RECIPE_CACHE_MS;
+  if (fresh) return hypixelItemResourceCache;
+
+  const data = await fetchJsonOrNull(HYPIXEL_SKYBLOCK_ITEMS_URL);
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const byId = new Map();
+  items.forEach((item) => {
+    const id = String(item?.id || '').trim().toUpperCase();
+    if (id) byId.set(id, item);
+  });
+  if (byId.size > 0) {
+    hypixelItemResourceCache = { time: Date.now(), byId, sourceCount: items.length };
+  }
+  return hypixelItemResourceCache;
 }
 
 async function fetchJsonOrNull(url) {
@@ -2635,6 +2727,7 @@ async function loadAccessoryCatalog() {
   const fresh = accessoryCatalogCache.items.length > 0 && Date.now() - accessoryCatalogCache.time < ACCESSORY_RECIPE_CACHE_MS;
   if (fresh) return accessoryCatalogCache;
 
+  const hypixelItems = await loadHypixelSkyBlockItems();
   const treeData = await fetchJsonOrNull(NEU_REPO_TREE_URL);
   const tree = Array.isArray(treeData?.tree) ? treeData.tree : [];
   const candidatePaths = tree
@@ -2650,16 +2743,18 @@ async function loadAccessoryCatalog() {
     const item = await fetchJsonOrNull(`${NEU_RAW_ITEM_URL}/${encodeURIComponent(fileName)}`);
     if (!item) return null;
     const internalId = item.internalname || path.basename(fileName, '.json');
-    if (!isMagicPowerAccessoryItem(item, internalId)) return null;
-    const rarity = neuItemRarity(item);
+    const officialItem = hypixelItems.byId.get(String(internalId).toUpperCase()) || null;
+    if (!isMagicPowerAccessoryItem(item, internalId, officialItem)) return null;
+    const rarity = neuItemRarity(item) || String(officialItem?.tier || '').toUpperCase().replace(/\s+/g, '_');
     const magicPower = MAGIC_POWER_BY_RARITY[rarity] || 0;
     if (magicPower <= 0) return null;
     const ingredients = parseNeuRecipe(item.recipe);
     return {
       id: internalId,
-      name: cleanNeuName(item.displayname || item.display_name || internalId.replace(/_/g, ' ')),
+      name: cleanNeuName(item.displayname || item.display_name || officialItem?.name || internalId.replace(/_/g, ' ')),
       rarity,
       magicPower,
+      category: officialSkyBlockItemCategory(officialItem) || String(item.category || item.item_category || '').toUpperCase(),
       soulbound: String(item.soulbound || item.coop_soulbound || '').toLowerCase() === 'true',
       museum: Boolean(item.museum),
       ingredients,
@@ -2671,7 +2766,12 @@ async function loadAccessoryCatalog() {
     if (!byId.has(item.id)) byId.set(item.id, item);
   });
   const items = Array.from(byId.values());
-  accessoryCatalogCache = { time: Date.now(), items, sourceCount: candidatePaths.length };
+  accessoryCatalogCache = {
+    time: Date.now(),
+    items,
+    sourceCount: candidatePaths.length,
+    officialItemSourceCount: hypixelItems.sourceCount,
+  };
   return accessoryCatalogCache;
 }
 
@@ -3187,7 +3287,7 @@ app.get('/api/magic-power', async (req, res) => {
   try {
     await refreshRawBazaarCache();
     const lbinData = await ensureLowestBinCache();
-    const { items, sourceCount, time } = await loadAccessoryCatalog();
+    const { items, sourceCount, officialItemSourceCount, time } = await loadAccessoryCatalog();
     const maxResults = Math.min(500, Math.max(10, parseInt(req.query.limit, 10) || 150));
     const rarity = String(req.query.rarity || 'all').toUpperCase();
     const maxCoinsPerMp = Number(req.query.maxCoinsPerMp || 0);
@@ -3260,6 +3360,7 @@ app.get('/api/magic-power', async (req, res) => {
       catalogCacheAgeMs: Date.now() - time,
       accessoriesScanned: items.length,
       sourceCandidates: sourceCount,
+      officialItemSourceCount: officialItemSourceCount || 0,
       lbinAvailable: Object.keys(lbinData).length > 0,
       excludedOwnedCount: excludedIds.size,
       excludedWithPredecessorsCount: expandedExcludedIds.size,
