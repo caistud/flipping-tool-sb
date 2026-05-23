@@ -7,6 +7,7 @@ const acquisitionOptions = [
   { value: 'all', label: 'All Priced' },
   { value: 'best-craft', label: 'Best Route: Craft' },
   { value: 'best-auction', label: 'Best Route: Auction' },
+  { value: 'recomb', label: 'Recomb Upgrades' },
   { value: 'craftable', label: 'Craftable' },
   { value: 'auction', label: 'Auction House' },
   { value: 'obtainable', label: 'Direct Obtainable' },
@@ -33,6 +34,8 @@ const matchesAcquisitionFilter = (row, filter) => {
       return row.bestMethod === 'craft';
     case 'best-auction':
       return row.bestMethod === 'buy';
+    case 'recomb':
+      return row.bestMethod === 'recomb';
     case 'craftable':
       return hasCraft;
     case 'auction':
@@ -125,6 +128,7 @@ export default function MagicPowerOptimizer() {
   const [limit, setLimit] = useState(150);
   const [maxCoinsPerMp, setMaxCoinsPerMp] = useState(0);
   const [includeCraft, setIncludeCraft] = useState(true);
+  const [includeRecomb, setIncludeRecomb] = useState(true);
   const [includeSoulbound, setIncludeSoulbound] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [acquisitionFilter, setAcquisitionFilter] = useState('all');
@@ -171,6 +175,7 @@ export default function MagicPowerOptimizer() {
           limit,
           maxCoinsPerMp,
           includeCraft,
+          includeRecomb,
           includeSoulbound,
           excludeIds: excludedIds.join(','),
           includeIds: missingIds.join(','),
@@ -187,7 +192,7 @@ export default function MagicPowerOptimizer() {
 
     load();
     return () => { active = false; };
-  }, [rarity, limit, maxCoinsPerMp, includeCraft, includeSoulbound, excludedIds.join(','), missingIds.join(','), refreshTick]);
+  }, [rarity, limit, maxCoinsPerMp, includeCraft, includeRecomb, includeSoulbound, excludedIds.join(','), missingIds.join(','), refreshTick]);
 
   const acquisitionRows = useMemo(() => (
     rows.filter((row) => matchesAcquisitionFilter(row, acquisitionFilter))
@@ -322,6 +327,10 @@ export default function MagicPowerOptimizer() {
           Include craft path
         </label>
         <label style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={includeRecomb} onChange={(event) => setIncludeRecomb(event.target.checked)} />
+          Include recombs
+        </label>
+        <label style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={includeSoulbound} onChange={(event) => setIncludeSoulbound(event.target.checked)} />
           Include soulbound
         </label>
@@ -435,7 +444,10 @@ export default function MagicPowerOptimizer() {
             {purchasePlan.rows.map((row, index) => (
               <div key={row.id} className="flex-between" style={{ gap: '1rem', padding: '0.45rem 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                 <span style={{ fontWeight: 700 }}>{index + 1}. {row.name}</span>
-                <span className="text-muted text-sm">{row.rarity.replace('_', ' ')} · +{row.magicPower} MP · {formatCoins(row.bestCost)} · {formatCoins(row.coinsPerMagicPower)}/MP</span>
+                <span className="text-muted text-sm">
+                  {row.nextRarity ? `${row.rarity.replace('_', ' ')} → ${row.nextRarity.replace('_', ' ')}` : row.rarity.replace('_', ' ')}
+                  {' '}· +{row.magicPower} MP · {formatCoins(row.bestCost)} · {formatCoins(row.coinsPerMagicPower)}/MP
+                </span>
               </div>
             ))}
           </div>
@@ -448,6 +460,7 @@ export default function MagicPowerOptimizer() {
         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
           Showing {filteredRows.length.toLocaleString()} accessories from {meta.accessoriesScanned?.toLocaleString() || 0} scanned candidates. Excluding {(meta.excludedWithPredecessorsCount ?? excludedIds.length).toLocaleString()} owned/predecessor IDs.
           {meta.skycryptMissingFilterCount > 0 && ` SkyCrypt missing filter: ${meta.skycryptMissingFilterCount.toLocaleString()} IDs.`}
+          {meta.recombUpgradeCount > 0 && ` Recomb upgrades: ${meta.recombUpgradeCount.toLocaleString()} at ${formatCoins(meta.recombPrice)} each.`}
           {acquisitionFilter !== 'all' && ` Method filter: ${acquisitionOptions.find((option) => option.value === acquisitionFilter)?.label}.`}
         </div>
       )}
@@ -483,12 +496,12 @@ export default function MagicPowerOptimizer() {
                     </div>
                   )}
                 </td>
-                <td>{row.rarity.replace('_', ' ')}</td>
+                <td>{row.nextRarity ? `${row.rarity.replace('_', ' ')} → ${row.nextRarity.replace('_', ' ')}` : row.rarity.replace('_', ' ')}</td>
                 <td style={{ fontWeight: 700 }}>{row.magicPower}</td>
                 <td>{formatCoins(row.bestCost)}</td>
                 <td style={{ color: 'var(--accent-success)', fontWeight: 700 }}>{formatCoins(row.coinsPerMagicPower)}</td>
                 <td>
-                  {row.bestMethod === 'craft' ? 'Craft' : 'Buy'}
+                  {row.bestMethod === 'craft' ? 'Craft' : row.bestMethod === 'recomb' ? 'Recomb' : 'Buy'}
                   {row.soulbound && <div className="text-warning text-sm">Soulbound</div>}
                 </td>
               </tr>

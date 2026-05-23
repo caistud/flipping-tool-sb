@@ -2491,6 +2491,16 @@ const MAGIC_POWER_BY_RARITY = {
   VERY_SPECIAL: 5,
 };
 
+const RECOMBOBULATOR_ITEM_ID = 'RECOMBOBULATOR_3000';
+const RECOMB_RARITY_UPGRADE = {
+  COMMON: 'UNCOMMON',
+  UNCOMMON: 'RARE',
+  RARE: 'EPIC',
+  EPIC: 'LEGENDARY',
+  LEGENDARY: 'MYTHIC',
+  SPECIAL: 'VERY_SPECIAL',
+};
+
 app.get('/api/lowestbin', async (req, res) => {
   if (Date.now() - moulberryLastFetch > 60000 || Object.keys(moulberryCache).length === 0) {
     try {
@@ -2571,6 +2581,17 @@ function expandExcludedAccessoryIds(excludedIds, items) {
   };
   Array.from(expanded).forEach(visit);
   return expanded;
+}
+
+function nextRecombRarity(rarity) {
+  return RECOMB_RARITY_UPGRADE[String(rarity || '').toUpperCase()] || '';
+}
+
+function recombMagicPowerGain(rarity) {
+  const current = String(rarity || '').toUpperCase();
+  const next = nextRecombRarity(current);
+  if (!next) return 0;
+  return Math.max(0, (MAGIC_POWER_BY_RARITY[next] || 0) - (MAGIC_POWER_BY_RARITY[current] || 0));
 }
 
 function isAccessoryLikeItem(item, fileBase) {
@@ -3294,6 +3315,7 @@ app.get('/api/magic-power', async (req, res) => {
     const minMagicPower = Number(req.query.minMagicPower || 0);
     const includeSoulbound = req.query.includeSoulbound === 'true';
     const includeCraft = req.query.includeCraft !== 'false';
+    const includeRecomb = req.query.includeRecomb === 'true';
     const inMode = req.query.inMode || 'insta-buy';
     const excludedIds = new Set(String(req.query.excludeIds || '')
       .split(',')
@@ -3338,10 +3360,43 @@ app.get('/api/magic-power', async (req, res) => {
       };
     });
 
+    const recombIngredient = priceCraftIngredient({ id: RECOMBOBULATOR_ITEM_ID, qty: 1 }, lbinData, inMode);
+    const catalogById = accessoryCatalogById(items);
+    const recombRows = includeRecomb && recombIngredient.totalCost > 0
+      ? Array.from(excludedIds)
+        .map((id) => catalogById.get(String(id || '').toUpperCase()))
+        .filter(Boolean)
+        .map((item) => {
+          const nextRarity = nextRecombRarity(item.rarity);
+          const magicPower = recombMagicPowerGain(item.rarity);
+          const bestCost = recombIngredient.totalCost;
+          return {
+            ...item,
+            id: `${item.id}__RECOMB`,
+            baseItemId: item.id,
+            name: `Recombobulate ${item.name}`,
+            rarity: item.rarity,
+            nextRarity,
+            magicPower,
+            directCost: 0,
+            directSource: 'upgrade',
+            craftCost: Math.round(bestCost),
+            bestCost,
+            bestMethod: 'recomb',
+            upgradeType: 'recomb',
+            coinsPerMagicPower: magicPower > 0 ? bestCost / magicPower : Infinity,
+            ingredients: [recombIngredient],
+            missing: [],
+            complete: magicPower > 0 && Number.isFinite(bestCost) && bestCost > 0,
+          };
+        })
+      : [];
+
     const rows = pricedRows
       .filter((row) => row.complete)
       .filter((row) => includedIds.size === 0 || includedIds.has(row.id.toUpperCase()))
       .filter((row) => !expandedExcludedIds.has(row.id.toUpperCase()))
+      .concat(recombRows.filter((row) => row.complete))
       .filter((row) => includeSoulbound || !row.soulbound)
       .filter((row) => rarity === 'ALL' || row.rarity === rarity)
       .filter((row) => row.magicPower >= minMagicPower)
@@ -3365,6 +3420,8 @@ app.get('/api/magic-power', async (req, res) => {
       excludedOwnedCount: excludedIds.size,
       excludedWithPredecessorsCount: expandedExcludedIds.size,
       skycryptMissingFilterCount: includedIds.size,
+      recombUpgradeCount: recombRows.filter((row) => row.complete).length,
+      recombPrice: Math.round(recombIngredient.totalCost || 0),
       predecessorExcludedIds: Array.from(expandedExcludedIds).filter((id) => !excludedIds.has(id)),
       magicPowerByRarity: MAGIC_POWER_BY_RARITY,
     });
