@@ -2572,10 +2572,35 @@ function accessoryFamilyKey(value) {
   return String(value || '')
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^(VERY_SPECIAL|SPECIAL|MYTHIC|LEGENDARY|EPIC|RARE|UNCOMMON|COMMON)_/, '')
+    .replace(/_(VERY_SPECIAL|SPECIAL|MYTHIC|LEGENDARY|EPIC|RARE|UNCOMMON|COMMON)$/, '')
+    .replace(/_(RECOMBOBULATED|RECOMB)$/, '')
     .replace(/_(TALISMAN|RING|ARTIFACT|RELIC|CHARM|BADGE|SEAL|ORB|SCARF|CREST|COMPASS)$/, '')
     .replace(/^THE_/, '')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '');
+}
+
+function canonicalAccessoryId(value, knownIds = new Set()) {
+  const raw = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  if (!raw) return '';
+  if (knownIds.has(raw)) return raw;
+
+  const variants = [
+    raw.replace(/^(VERY_SPECIAL|SPECIAL|MYTHIC|LEGENDARY|EPIC|RARE|UNCOMMON|COMMON)_/, ''),
+    raw.replace(/_(VERY_SPECIAL|SPECIAL|MYTHIC|LEGENDARY|EPIC|RARE|UNCOMMON|COMMON)$/, ''),
+    raw.replace(/_(RECOMBOBULATED|RECOMB)$/, ''),
+    raw
+      .replace(/^(VERY_SPECIAL|SPECIAL|MYTHIC|LEGENDARY|EPIC|RARE|UNCOMMON|COMMON)_/, '')
+      .replace(/_(RECOMBOBULATED|RECOMB)$/, ''),
+  ].filter(Boolean);
+
+  return variants.find((id) => knownIds.has(id)) || raw;
 }
 
 function expandExcludedAccessoryIds(excludedIds, items) {
@@ -2613,6 +2638,17 @@ function recombMagicPowerGain(rarity) {
   const next = nextRecombRarity(current);
   if (!next) return 0;
   return Math.max(0, (MAGIC_POWER_BY_RARITY[next] || 0) - (MAGIC_POWER_BY_RARITY[current] || 0));
+}
+
+function recombMagicPowerByRarity() {
+  return Object.fromEntries(Object.keys(RECOMB_RARITY_UPGRADE).map((rarity) => ([
+    rarity,
+    {
+      from: rarity,
+      to: nextRecombRarity(rarity),
+      gain: recombMagicPowerGain(rarity),
+    },
+  ])));
 }
 
 function isAccessoryLikeItem(item, fileBase) {
@@ -2879,6 +2915,20 @@ function collectItemIdsFromNbt(value, ids = []) {
   return ids;
 }
 
+function addKnownAccessoryStateId(state, rawId, knownIds, sourceValue = null) {
+  const id = canonicalAccessoryId(rawId, knownIds);
+  if (!knownIds.has(id)) return;
+  state.ownedIds.add(id);
+  const raw = String(rawId || '').toUpperCase();
+  if (
+    isRecombobulatedItem(sourceValue)
+    || /(^|_)RECOMB(OBULATED)?(_|$)/.test(raw)
+    || /^(VERY_SPECIAL|SPECIAL|MYTHIC|LEGENDARY)_/.test(raw)
+  ) {
+    state.recombobulatedIds.add(id);
+  }
+}
+
 function isTruthyRecombValue(value) {
   if (value === true) return true;
   if (typeof value === 'number') return value > 0;
@@ -2928,9 +2978,7 @@ function collectAccessoryStatesFromNbt(value, knownIds, state = { ownedIds: new 
   if (typeof value !== 'object') return state;
 
   extractSkyblockIdCandidates(value).forEach((id) => {
-    if (!knownIds.has(id)) return;
-    state.ownedIds.add(id);
-    if (isRecombobulatedItem(value)) state.recombobulatedIds.add(id);
+    addKnownAccessoryStateId(state, id, knownIds, value);
   });
 
   Object.values(value).forEach((child) => collectAccessoryStatesFromNbt(child, knownIds, state));
@@ -2964,7 +3012,7 @@ function extractSkyblockIdCandidates(value) {
 function collectKnownSkyCryptAccessoryIds(value, knownIds, found = new Set(), skipKeyPattern = null) {
   if (!value) return found;
   if (typeof value === 'string') {
-    const normalized = value.trim().toUpperCase();
+    const normalized = canonicalAccessoryId(value, knownIds);
     if (knownIds.has(normalized)) found.add(normalized);
     return found;
   }
@@ -2975,7 +3023,8 @@ function collectKnownSkyCryptAccessoryIds(value, knownIds, found = new Set(), sk
   if (typeof value !== 'object') return found;
 
   extractSkyblockIdCandidates(value).forEach((id) => {
-    if (knownIds.has(id)) found.add(id);
+    const normalized = canonicalAccessoryId(id, knownIds);
+    if (knownIds.has(normalized)) found.add(normalized);
   });
   Object.entries(value).forEach(([key, child]) => {
     if (skipKeyPattern && skipKeyPattern.test(String(key))) return;
@@ -2987,8 +3036,7 @@ function collectKnownSkyCryptAccessoryIds(value, knownIds, found = new Set(), sk
 function collectKnownSkyCryptAccessoryStates(value, knownIds, state = { ownedIds: new Set(), recombobulatedIds: new Set() }, skipKeyPattern = null) {
   if (!value) return state;
   if (typeof value === 'string') {
-    const normalized = value.trim().toUpperCase();
-    if (knownIds.has(normalized)) state.ownedIds.add(normalized);
+    addKnownAccessoryStateId(state, value, knownIds, value);
     return state;
   }
   if (Array.isArray(value)) {
@@ -2998,9 +3046,7 @@ function collectKnownSkyCryptAccessoryStates(value, knownIds, state = { ownedIds
   if (typeof value !== 'object') return state;
 
   extractSkyblockIdCandidates(value).forEach((id) => {
-    if (!knownIds.has(id)) return;
-    state.ownedIds.add(id);
-    if (isRecombobulatedItem(value)) state.recombobulatedIds.add(id);
+    addKnownAccessoryStateId(state, id, knownIds, value);
   });
 
   Object.entries(value).forEach(([key, child]) => {
@@ -3432,19 +3478,24 @@ app.get('/api/magic-power', async (req, res) => {
     const includeCraft = req.query.includeCraft !== 'false';
     const includeRecomb = req.query.includeRecomb === 'true';
     const inMode = req.query.inMode || 'insta-buy';
+    const catalogIds = new Set(items.map((item) => item.id.toUpperCase()));
     const excludedIds = new Set(String(req.query.excludeIds || '')
       .split(',')
-      .map((id) => id.trim().toUpperCase())
+      .map((id) => canonicalAccessoryId(id, catalogIds))
       .filter(Boolean));
     const includedIds = new Set(String(req.query.includeIds || '')
       .split(',')
-      .map((id) => id.trim().toUpperCase())
+      .map((id) => canonicalAccessoryId(id, catalogIds))
       .filter(Boolean));
     const recombobulatedIds = new Set(String(req.query.recombobulatedIds || '')
       .split(',')
-      .map((id) => id.trim().toUpperCase())
+      .map((id) => canonicalAccessoryId(id, catalogIds))
       .filter(Boolean));
-    const expandedExcludedIds = expandExcludedAccessoryIds(excludedIds, items);
+    const ownedOrRecombobulatedIds = new Set([
+      ...Array.from(excludedIds),
+      ...Array.from(recombobulatedIds),
+    ]);
+    const expandedExcludedIds = expandExcludedAccessoryIds(ownedOrRecombobulatedIds, items);
 
     const pricedRows = await mapLimit(items, 8, async (item) => {
       const directPricing = await getAccessoryOutputPrice(item.id, lbinData);
@@ -3543,8 +3594,9 @@ app.get('/api/magic-power', async (req, res) => {
       recombUpgradeCount: recombRows.filter((row) => row.complete).length,
       recombobulatedOwnedCount: recombobulatedIds.size,
       recombPrice: Math.round(recombIngredient.totalCost || 0),
-      predecessorExcludedIds: Array.from(expandedExcludedIds).filter((id) => !excludedIds.has(id)),
+      predecessorExcludedIds: Array.from(expandedExcludedIds).filter((id) => !ownedOrRecombobulatedIds.has(id)),
       magicPowerByRarity: MAGIC_POWER_BY_RARITY,
+      recombMagicPowerByRarity: recombMagicPowerByRarity(),
     });
   } catch (error) {
     console.error('Crash in magic-power:', error.message);

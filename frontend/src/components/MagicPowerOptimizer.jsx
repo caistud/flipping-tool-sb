@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import { fetchMagicPower, fetchPlayerAccessories } from '../services/api';
 
 const rarityOptions = ['ALL', 'COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC', 'SPECIAL', 'VERY_SPECIAL'];
+const mpRarityOrder = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC', 'SPECIAL', 'VERY_SPECIAL'];
 const acquisitionOptions = [
   { value: 'all', label: 'All Priced' },
   { value: 'best-craft', label: 'Best Route: Craft' },
@@ -223,6 +224,18 @@ export default function MagicPowerOptimizer() {
     if (value.endsWith('k')) return Number(value.slice(0, -1)) * 1_000;
     return Number(value) || 0;
   };
+
+  const magicPowerReference = useMemo(() => {
+    const byRarity = meta?.magicPowerByRarity || {};
+    const recombByRarity = meta?.recombMagicPowerByRarity || {};
+    return mpRarityOrder
+      .filter((rarityKey) => Number(byRarity[rarityKey] || 0) > 0)
+      .map((rarityKey) => ({
+        rarity: rarityKey,
+        magicPower: Number(byRarity[rarityKey] || 0),
+        recomb: recombByRarity[rarityKey] || null,
+      }));
+  }, [meta]);
 
   const purchasePlan = useMemo(() => {
     const candidates = acquisitionRows
@@ -459,8 +472,8 @@ export default function MagicPowerOptimizer() {
               <div key={row.id} className="flex-between" style={{ gap: '1rem', padding: '0.45rem 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                 <span style={{ fontWeight: 700 }}>{index + 1}. {row.name}</span>
                 <span className="text-muted text-sm">
-                  {row.nextRarity ? `${row.rarity.replace('_', ' ')} → ${row.nextRarity.replace('_', ' ')}` : row.rarity.replace('_', ' ')}
-                  {' '}· +{row.magicPower} MP · {formatCoins(row.bestCost)} · {formatCoins(row.coinsPerMagicPower)}/MP
+                  {row.nextRarity ? `${row.rarity.replace('_', ' ')} -> ${row.nextRarity.replace('_', ' ')}` : row.rarity.replace('_', ' ')}
+                  {' '}- +{row.magicPower} MP - {formatCoins(row.bestCost)} - {formatCoins(row.coinsPerMagicPower)}/MP
                 </span>
               </div>
             ))}
@@ -477,6 +490,26 @@ export default function MagicPowerOptimizer() {
           {meta.recombobulatedOwnedCount > 0 && ` Already recombobulated: ${meta.recombobulatedOwnedCount.toLocaleString()}.`}
           {meta.recombUpgradeCount > 0 && ` Recomb upgrades: ${meta.recombUpgradeCount.toLocaleString()} at ${formatCoins(meta.recombPrice)} each.`}
           {acquisitionFilter !== 'all' && ` Method filter: ${acquisitionOptions.find((option) => option.value === acquisitionFilter)?.label}.`}
+        </div>
+      )}
+
+      {magicPowerReference.length > 0 && (
+        <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid var(--glass-border)', borderRadius: 12, padding: '1rem', marginBottom: '1rem' }}>
+          <div className="flex-between" style={{ gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+            <h3 style={{ margin: 0 }}>Magic Power Values</h3>
+            <span className="text-muted text-sm">Used for missing accessories and recomb upgrade gain.</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '0.5rem' }}>
+            {magicPowerReference.map((entry) => (
+              <div key={entry.rarity} style={{ border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '0.6rem', background: 'rgba(255,255,255,0.025)' }}>
+                <div style={{ fontWeight: 800 }}>{entry.rarity.replace('_', ' ')}</div>
+                <div className="text-muted text-sm">{entry.magicPower} MP</div>
+                {entry.recomb?.to && (
+                  <div className="text-muted text-sm">Recomb: +{entry.recomb.gain} MP</div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -511,7 +544,7 @@ export default function MagicPowerOptimizer() {
                     </div>
                   )}
                 </td>
-                <td>{row.nextRarity ? `${row.rarity.replace('_', ' ')} → ${row.nextRarity.replace('_', ' ')}` : row.rarity.replace('_', ' ')}</td>
+                <td>{row.nextRarity ? `${row.rarity.replace('_', ' ')} -> ${row.nextRarity.replace('_', ' ')}` : row.rarity.replace('_', ' ')}</td>
                 <td style={{ fontWeight: 700 }}>{row.magicPower}</td>
                 <td>{formatCoins(row.bestCost)}</td>
                 <td style={{ color: 'var(--accent-success)', fontWeight: 700 }}>{formatCoins(row.coinsPerMagicPower)}</td>
