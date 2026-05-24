@@ -2568,9 +2568,30 @@ function buildAccessoryPredecessorMap(items) {
   return map;
 }
 
+function accessoryFamilyKey(value) {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_(TALISMAN|RING|ARTIFACT|RELIC|CHARM|BADGE|SEAL|ORB|SCARF|CREST|COMPASS)$/, '')
+    .replace(/^THE_/, '')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
 function expandExcludedAccessoryIds(excludedIds, items) {
   const predecessorMap = buildAccessoryPredecessorMap(items);
   const expanded = new Set(Array.from(excludedIds).map((id) => String(id || '').toUpperCase()));
+  const excludedFamilies = new Set(Array.from(expanded).map(accessoryFamilyKey).filter(Boolean));
+
+  items.forEach((item) => {
+    const id = String(item.id || '').toUpperCase();
+    const keys = [
+      accessoryFamilyKey(id),
+      accessoryFamilyKey(item.name),
+    ].filter(Boolean);
+    if (keys.some((key) => excludedFamilies.has(key))) expanded.add(id);
+  });
+
   const visit = (id) => {
     const predecessors = predecessorMap.get(id) || [];
     predecessors.forEach((predecessorId) => {
