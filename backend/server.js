@@ -2879,6 +2879,64 @@ function collectItemIdsFromNbt(value, ids = []) {
   return ids;
 }
 
+function isTruthyRecombValue(value) {
+  if (value === true) return true;
+  if (typeof value === 'number') return value > 0;
+  if (typeof value === 'string') return /^(true|yes|1|recombobulated)$/i.test(value.trim());
+  return false;
+}
+
+function itemExtraAttributes(value) {
+  if (!value || typeof value !== 'object') return null;
+  return value.tag?.ExtraAttributes
+    || value.ExtraAttributes
+    || value.extraAttributes
+    || value.extra_attributes
+    || value.tag?.value?.ExtraAttributes?.value
+    || value.value?.tag?.value?.ExtraAttributes?.value
+    || value.item?.tag?.ExtraAttributes
+    || value.item?.ExtraAttributes
+    || value.item?.extraAttributes
+    || null;
+}
+
+function isRecombobulatedItem(value) {
+  if (!value || typeof value !== 'object') return false;
+  const attrs = itemExtraAttributes(value) || {};
+  return [
+    value.recombobulated,
+    value.recombobulator,
+    value.rarity_upgrades,
+    value.rarityUpgrades,
+    value.item?.recombobulated,
+    value.item?.rarity_upgrades,
+    attrs.recombobulated,
+    attrs.recombobulator,
+    attrs.rarity_upgrades,
+    attrs.rarityUpgrades,
+    attrs.rarity_upgrades?.value,
+    attrs.rarityUpgrades?.value,
+  ].some(isTruthyRecombValue);
+}
+
+function collectAccessoryStatesFromNbt(value, knownIds, state = { ownedIds: new Set(), recombobulatedIds: new Set() }) {
+  if (!value) return state;
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectAccessoryStatesFromNbt(entry, knownIds, state));
+    return state;
+  }
+  if (typeof value !== 'object') return state;
+
+  extractSkyblockIdCandidates(value).forEach((id) => {
+    if (!knownIds.has(id)) return;
+    state.ownedIds.add(id);
+    if (isRecombobulatedItem(value)) state.recombobulatedIds.add(id);
+  });
+
+  Object.values(value).forEach((child) => collectAccessoryStatesFromNbt(child, knownIds, state));
+  return state;
+}
+
 function extractSkyblockIdCandidates(value) {
   if (!value || typeof value !== 'object') return [];
   return [
@@ -2926,6 +2984,32 @@ function collectKnownSkyCryptAccessoryIds(value, knownIds, found = new Set(), sk
   return found;
 }
 
+function collectKnownSkyCryptAccessoryStates(value, knownIds, state = { ownedIds: new Set(), recombobulatedIds: new Set() }, skipKeyPattern = null) {
+  if (!value) return state;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toUpperCase();
+    if (knownIds.has(normalized)) state.ownedIds.add(normalized);
+    return state;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectKnownSkyCryptAccessoryStates(entry, knownIds, state, skipKeyPattern));
+    return state;
+  }
+  if (typeof value !== 'object') return state;
+
+  extractSkyblockIdCandidates(value).forEach((id) => {
+    if (!knownIds.has(id)) return;
+    state.ownedIds.add(id);
+    if (isRecombobulatedItem(value)) state.recombobulatedIds.add(id);
+  });
+
+  Object.entries(value).forEach(([key, child]) => {
+    if (skipKeyPattern && skipKeyPattern.test(String(key))) return;
+    collectKnownSkyCryptAccessoryStates(child, knownIds, state, skipKeyPattern);
+  });
+  return state;
+}
+
 function skyCryptSections(data, wantedKeys) {
   const sections = [];
   const visit = (value, pathParts = []) => {
@@ -2962,17 +3046,18 @@ async function fetchSkyCryptAccessorySnapshot(uuid, profileId, knownAccessoryIds
     ].filter((section) => section.value);
     const missingSections = skyCryptSections(data, ['missing', 'missingaccessories', 'upgrades']);
 
-    const ownedIds = new Set();
+    const ownedState = { ownedIds: new Set(), recombobulatedIds: new Set() };
     ownedSections
       .filter((section) => !/missing|upgrade/i.test(section.path))
-      .forEach((section) => collectKnownSkyCryptAccessoryIds(section.value, knownAccessoryIds, ownedIds, /missing|upgrade/i));
+      .forEach((section) => collectKnownSkyCryptAccessoryStates(section.value, knownAccessoryIds, ownedState, /missing|upgrade/i));
 
     const missingIds = new Set();
     missingSections.forEach((section) => collectKnownSkyCryptAccessoryIds(section.value, knownAccessoryIds, missingIds));
 
     return {
       source: 'skycrypt',
-      ownedIds,
+      ownedIds: ownedState.ownedIds,
+      recombobulatedIds: ownedState.recombobulatedIds,
       missingIds,
       magicalPower: data.magicalPower || data.magicPower || data.magical_power || null,
       sectionPaths: {
@@ -2985,6 +3070,7 @@ async function fetchSkyCryptAccessorySnapshot(uuid, profileId, knownAccessoryIds
       source: 'skycrypt',
       error: error.response?.data?.error || error.response?.data?.message || error.message,
       ownedIds: new Set(),
+      recombobulatedIds: new Set(),
       missingIds: new Set(),
       magicalPower: null,
       sectionPaths: { owned: [], missing: [] },
@@ -3034,6 +3120,7 @@ app.get('/api/player-accessories', async (req, res) => {
     const skyCrypt = await fetchSkyCryptAccessorySnapshot(uuid, profile.profile_id, accessoryIds);
     const blobs = collectInventoryBlobs(member);
     const foundIds = new Set();
+    const recombobulatedIds = new Set();
     const parsedSources = [];
     const allParsedIds = new Set();
     let parsedBlobCount = 0;
@@ -3046,6 +3133,8 @@ app.get('/api/player-accessories', async (req, res) => {
       allIds.forEach((id) => allParsedIds.add(id));
       const ids = allIds.filter((id) => accessoryIds.has(id));
       if (ids.length > 0) ids.forEach((id) => foundIds.add(id));
+      const states = collectAccessoryStatesFromNbt(parsed, accessoryIds);
+      states.recombobulatedIds.forEach((id) => recombobulatedIds.add(id));
       parsedSources.push({
         path: blob.path,
         itemIdCount: allIds.length,
@@ -3056,6 +3145,9 @@ app.get('/api/player-accessories', async (req, res) => {
 
     if (skyCrypt?.ownedIds?.size > 0) {
       skyCrypt.ownedIds.forEach((id) => foundIds.add(id));
+    }
+    if (skyCrypt?.recombobulatedIds?.size > 0) {
+      skyCrypt.recombobulatedIds.forEach((id) => recombobulatedIds.add(id));
     }
 
     const rows = Array.from(foundIds)
@@ -3076,6 +3168,7 @@ app.get('/api/player-accessories', async (req, res) => {
       profileId: profile.profile_id,
       profileName: profile.cute_name,
       accessoryIds: rows.map((row) => row.id),
+      recombobulatedAccessoryIds: Array.from(recombobulatedIds),
       rows,
       count: rows.length,
       source: skyCrypt?.ownedIds?.size > 0 ? 'skycrypt+hypixel' : 'hypixel',
@@ -3096,6 +3189,7 @@ app.get('/api/player-accessories', async (req, res) => {
         skycrypt: skyCrypt ? {
           error: skyCrypt.error || null,
           ownedCount: skyCrypt.ownedIds?.size || 0,
+          recombobulatedCount: skyCrypt.recombobulatedIds?.size || 0,
           missingCount: skyCrypt.missingIds?.size || 0,
           magicalPower: skyCrypt.magicalPower || null,
           sectionPaths: skyCrypt.sectionPaths,
@@ -3346,6 +3440,10 @@ app.get('/api/magic-power', async (req, res) => {
       .split(',')
       .map((id) => id.trim().toUpperCase())
       .filter(Boolean));
+    const recombobulatedIds = new Set(String(req.query.recombobulatedIds || '')
+      .split(',')
+      .map((id) => id.trim().toUpperCase())
+      .filter(Boolean));
     const expandedExcludedIds = expandExcludedAccessoryIds(excludedIds, items);
 
     const pricedRows = await mapLimit(items, 8, async (item) => {
@@ -3387,6 +3485,7 @@ app.get('/api/magic-power', async (req, res) => {
       ? Array.from(excludedIds)
         .map((id) => catalogById.get(String(id || '').toUpperCase()))
         .filter(Boolean)
+        .filter((item) => !recombobulatedIds.has(item.id.toUpperCase()))
         .map((item) => {
           const nextRarity = nextRecombRarity(item.rarity);
           const magicPower = recombMagicPowerGain(item.rarity);
@@ -3442,6 +3541,7 @@ app.get('/api/magic-power', async (req, res) => {
       excludedWithPredecessorsCount: expandedExcludedIds.size,
       skycryptMissingFilterCount: includedIds.size,
       recombUpgradeCount: recombRows.filter((row) => row.complete).length,
+      recombobulatedOwnedCount: recombobulatedIds.size,
       recombPrice: Math.round(recombIngredient.totalCost || 0),
       predecessorExcludedIds: Array.from(expandedExcludedIds).filter((id) => !excludedIds.has(id)),
       magicPowerByRarity: MAGIC_POWER_BY_RARITY,
