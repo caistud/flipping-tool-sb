@@ -1167,6 +1167,7 @@ app.get('/api/mayor-flips', async (req, res) => {
 const skyshardsData = require('./skyshards_new_fusion_data.json');
 let flattenedRecipes = [];
 let recipesByOutput = {};
+const REPTILE_FUSION_YIELD_MULTIPLIER = 1.2;
 
 const bootSkyShards = () => {
     flattenedRecipes = [];
@@ -1680,6 +1681,7 @@ app.get('/api/best-fusions', async (req, res) => {
         const sysFamily = shardFamilyCache[rec.outputInternalId] || 'NONE';
 
         if (sysFamily.toUpperCase() === 'REPTILE') {
+            yieldMult *= REPTILE_FUSION_YIELD_MULTIPLIER;
             yieldMult += (+crocBuff * 0.02);
             yieldMult += (+seaBuff * 0.02);
             yieldMult += (+tiaBuff * 0.02);
@@ -1894,6 +1896,7 @@ app.get('/api/batch-optimize', async (req, res) => {
         const sysFamily = batchShardFamilyCache[rec.outputInternalId] || 'NONE';
 
         if (sysFamily.toUpperCase() === 'REPTILE') {
+            yieldMult *= REPTILE_FUSION_YIELD_MULTIPLIER;
             yieldMult += (+crocBuff * 0.02);
             yieldMult += (+seaBuff * 0.02);
             yieldMult += (+tiaBuff * 0.02);
